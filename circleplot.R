@@ -1,3 +1,7 @@
+# =========================================================
+# Visualización genómica integrada con circlize (CNV, deleciones, inversiones, translocaciones)
+# =========================================================
+
 # -------------------------------
 # 0. Cargar librerías
 # -------------------------------
@@ -39,17 +43,36 @@ inversions <- data.frame(
 )
 
 # -------------------------------
-# 5. Limpiar gráfico previo
+# 5. Preparar variaciones en el número de copias (CNV)
+# -------------------------------
+# Segmentos CN (ganancias/pérdidas)
+cnv_segments <- data.frame(
+        chr = c("chr1", "chr1", "chr2", "chr3"),
+        start = c(1e7, 5e7, 1e7, 3e7),
+        end   = c(2e7, 6e7, 2e7, 4e7),
+        CN    = c(1, 3, 2, 4)
+)
+
+# Valores continuos (log2 ratio)
+cnv_log2 <- data.frame(
+        chr = rep("chr1", 10),
+        start = seq(1e6, 10e6, by = 1e6),
+        end = seq(1e6, 10e6, by = 1e6) + 1e5,
+        log2ratio = c(-1, -0.5, 0, 0.3, 1, 0.8, 0.2, -0.2, -0.6, -1)
+)
+
+# -------------------------------
+# 6. Limpiar gráfico previo
 # -------------------------------
 circos.clear()
 
 # -------------------------------
-# 6. Configurar posición inicial
+# 7. Configurar posición inicial
 # -------------------------------
 circos.par(start.degree = 90)  # Cromosoma 1 arriba
 
 # -------------------------------
-# 7. Inicializar ideograma
+# 8. Inicializar ideograma
 # -------------------------------
 circos.initializeWithIdeogram(
         cytoband = cytobands,
@@ -59,29 +82,65 @@ circos.initializeWithIdeogram(
 )
 
 # -------------------------------
-# 8. Añadir deleciones e inversiones en el mismo track
+# 9. Añadir track CN segmentado (ganancias/pérdidas)
 # -------------------------------
 circos.trackPlotRegion(
-        ylim = c(0, 1),
+        ylim = c(0, 5),
+        track.height = 0.08,
+        bg.border = "grey40",
+        bg.col = NA,
         panel.fun = function(x, y) {
                 chr <- get.cell.meta.data("sector.index")
-                
-                # Deleciones
-                d <- deletions[deletions$chr == chr, ]
-                if(nrow(d) > 0){
-                        circos.rect(d$start, 0, d$end, 1, col = "red", border = NA)
-                }
-                
-                # Inversiones
-                inv <- inversions[inversions$chr == chr, ]
-                if(nrow(inv) > 0){
-                        circos.points(x = inv$pos, y = rep(0.5, nrow(inv)), col = "green", pch = 16, cex = 1)
+                d <- cnv_segments[cnv_segments$chr == chr, ]
+                if (nrow(d) > 0) {
+                        for (i in seq_len(nrow(d))) {
+                                col <- if (d$CN[i] < 2) "#1E90FF66" else if (d$CN[i] > 2) "#FF000066" else "#B0B0B066"
+                                circos.rect(d$start[i], 0, d$end[i], d$CN[i], col = col, border = "grey40")
+                        }
                 }
         }
 )
 
 # -------------------------------
-# 9. Añadir translocaciones
+# 10. Añadir track con log2 ratios
+# -------------------------------
+circos.genomicTrack(
+        cnv_log2,
+        ylim = c(-2, 2),
+        track.height = 0.06,
+        bg.border = "grey40",
+        panel.fun = function(region, value, ...) {
+                circos.genomicPoints(region, value, col = "darkorange", pch = 16, cex = 0.5)
+                circos.genomicLines(region, value, col = "#FF8C0077", lwd = 1)
+        }
+)
+
+# -------------------------------
+# 11. Añadir deleciones e inversiones
+# -------------------------------
+circos.trackPlotRegion(
+        ylim = c(0, 1),
+        track.height = 0.05,
+        bg.border = "grey40",
+        panel.fun = function(x, y) {
+                chr <- get.cell.meta.data("sector.index")
+                
+                # Deleciones
+                d <- deletions[deletions$chr == chr, ]
+                if (nrow(d) > 0) {
+                        circos.rect(d$start, 0, d$end, 1, col = "#FF0000AA", border = "grey40")
+                }
+                
+                # Inversiones
+                inv <- inversions[inversions$chr == chr, ]
+                if (nrow(inv) > 0) {
+                        circos.points(x = inv$pos, y = rep(0.5, nrow(inv)), col = "#00FF00BB", pch = 16, cex = 1)
+                }
+        }
+)
+
+# -------------------------------
+# 12. Añadir translocaciones
 # -------------------------------
 walk(1:nrow(translocations), function(i) {
         circos.link(
@@ -89,21 +148,28 @@ walk(1:nrow(translocations), function(i) {
                 point1 = c(translocations$start1[i], translocations$end1[i]),
                 sector.index2 = translocations$chr2[i],
                 point2 = c(translocations$start2[i], translocations$end2[i]),
-                col = "blue", border = NA
+                col = "#4169E180",
+                border = "grey40"
         )
 })
 
 # -------------------------------
-# 10. Añadir leyenda
+# 13. Añadir leyenda
 # -------------------------------
 legend(
         "topright",
-        legend = c("Deleciones", "Translocaciones", "Inversiones"),
-        fill = c("red", "blue", "green"),
-        border = NA,
+        legend = c(
+                "CNV ganancia (CN>2)",
+                "CNV pérdida (CN<2)",
+                "CNV log2 ratio",
+                "Deleciones",
+                "Inversiones",
+                "Translocaciones"
+        ),
+        fill = c("#FF000066", "#1E90FF66", "darkorange", "#FF0000AA", "#00FF00BB", "#4169E180"),
+        border = "grey40",
         bty = "n"
 )
-
 
 
 #library(karyoploteR)

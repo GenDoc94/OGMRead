@@ -2,7 +2,7 @@ library(tidyverse)
 
 #List all files that start with number
 archives <- list.files(
-        path = "files",
+        path = "variants_files",
         pattern = "^[0-9]+_.*\\.txt$",  #start with number
         full.names = TRUE
 )

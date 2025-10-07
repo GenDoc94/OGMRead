@@ -3,4 +3,5 @@
 .RData
 .Ruserdata
 
-files/
+variants_files/
+bionapp_files/

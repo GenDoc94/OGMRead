@@ -1,6 +1,29 @@
 library(tidyverse)
 library(readxl)
+library(jsonlite)
+library(readxl)
 
+#QUALITY
+extract_values <- function(x) {
+        map_chr(x, "value", .default = NA) |> as_tibble_row()
+}
+
+process_file <- function(f) {
+        json_data <- fromJSON(f, simplifyDataFrame = FALSE)
+        job_data <- json_data[[1]]
+        
+        job_tbl <- extract_values(job_data$job$value)
+        mqr_tbl <- extract_values(job_data$mqr$value)
+        
+        bind_cols(job_tbl, mqr_tbl) |> mutate(filename = basename(f))
+}
+
+quality <- list.files("json_files", pattern = "^report_.*\\.json$", full.names = TRUE) |>
+        map_df(process_file) |> mutate(samplename = as.integer(samplename))
+
+rm(extract_values, process_file)
+
+#VARIANTS
 #List all files that start with number
 archives <- list.files(
         path = "variants_files",
@@ -9,7 +32,7 @@ archives <- list.files(
 )
 
 #Read all and add column Id
-all_variants <- archives %>%
+variants <- archives %>%
         set_names() %>%  #keep the name of the archive
         map_dfr(~ {
                 read_tsv(.x, na = c("null", "-", "NA"), comment = "") %>%
@@ -19,7 +42,11 @@ all_variants <- archives %>%
                 across(c(Classification, Type, Zygosity), as.factor)
         )
 
+#Nested variant base
+n_variant <- variants |> group_by(Id) |> nest()
 
+
+#METADATA
 ddx <- read_tsv("bionapp_files/DDx.txt",
                 col_names = TRUE,
                 locale = locale(encoding = "Latin1")) %>%
@@ -29,7 +56,7 @@ dmuestra <- read_tsv("bionapp_files/DMuestra.txt",
                      col_names = TRUE,
                      locale = locale(encoding = "Latin1"))
 
-all_metadata <- read_tsv("bionapp_files/Muestras.txt",
+metadata <- read_tsv("bionapp_files/Muestras.txt",
                          col_names = TRUE,
                          locale = locale(encoding = "Latin1")) %>% 
         mutate(Id=NumBN, .before=1) %>% select(-NumBN) %>% #rename doesnt work
@@ -42,16 +69,24 @@ all_metadata <- read_tsv("bionapp_files/Muestras.txt",
 
 rm(archives, ddx, dmuestra)
 
-#Nested base
-n_variant <- all_variants |> group_by(Id) |> nest()
+#CLINICAL
 
-#Mixing data with metadata (just keeping data)
-n_variant_complete <- left_join(n_variant,all_metadata, by="Id")
+
+# Leer el archivo Excel
+demograph <- read_excel("clinical_files/Basics.xlsx")
+
+
+
+#Mixing data with clinical, metadata and quality (just keeping data)
+complete_base <- left_join(n_variant, demograph, by = c("Id" = "NumBN")) %>% 
+        left_join(metadata, by="Id") %>% 
+        left_join(quality, by = c("Id" = "samplename"))
+
+rm(n_variant)
 
 #Filtering P/LP/VUS variants
-n_variant_filter <- n_variant %>%
+cb_filter <- complete_base %>%
         mutate(
                 data = map(data, ~ filter(.x, Classification %in% c("Uncertain significance", 
                                                                     "Likely pathogenic", 
-                                                                    "Pathogenic")))
-        )
+                                                                    "Pathogenic"))))

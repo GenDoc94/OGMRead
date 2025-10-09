@@ -3,7 +3,7 @@
 .RData
 .Ruserdata
 
-variants_files/
-bionapp_files/
-json_files/
-clinical_files/
+variants_files/*
+bionapp_files/*
+json_files/*
+clinical_files/*

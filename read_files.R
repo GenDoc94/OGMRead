@@ -19,7 +19,14 @@ process_file <- function(f) {
 }
 
 quality <- list.files("json_files", pattern = "^report_.*\\.json$", full.names = TRUE) |>
-        map_df(process_file) |> mutate(samplename = as.integer(samplename))
+        map_df(process_file) |> mutate(
+                samplename = as.integer(samplename),
+                quantity = parse_number(quantity), #Gbp
+                mol_n_50 = parse_number(mol_n_50), #kbp
+                coverage = as.numeric(coverage),
+                map_rate = parse_number(map_rate),
+                fp_rate = as.numeric(fp_rate),
+                fn_rate = as.numeric(fn_rate))
 
 rm(extract_values, process_file)
 

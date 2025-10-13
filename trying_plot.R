@@ -5,15 +5,17 @@ library(purrr)
 # deletion -> #f3794b V
 # inversión -> #6fa9db
 # traslocation -> #eb008b
-# duplication -> #9999ff
+# duplication -> #9999ff V
 # CNV gain -> #9999ff V
 # CNV loss -> #f3794b V
 
-case74 <- cb_filter |> select(Id, data) |> filter(Id == 74) |> unnest()
-case61 <- cb_filter |> select(Id, data) |> filter(Id == 61) |> unnest()
-case83 <- cb_filter |> select(Id, data) |> filter(Id == 83) |> unnest()
+case74 <- cb_filter |> select(Id, data) |> filter(Id == 74) |> unnest() #trans, del, gain
+case61 <- cb_filter |> select(Id, data) |> filter(Id == 61) |> unnest() #ins, del
+case83 <- cb_filter |> select(Id, data) |> filter(Id == 83) |> unnest() #trans, del, dup, gain, loss
+case66 <- cb_filter |> select(Id, data) |> filter(Id == 66) |> unnest() #trans, inv, dup, gain, loss
 
-case <- case83
+
+case <- case66
 
 cytobands <- read.cytoband(species = "hg38")
 
@@ -30,6 +32,17 @@ deletions <- case |>
 
 insertions <- case |> 
         filter(Type == "insertion") |> 
+        select(Id, RefcontigID1, RefStartPos, RefEndPos) |>
+        rename(chr = RefcontigID1) |>
+        mutate(chr = paste("chr", chr, sep = "")) |>
+        ungroup() |> select(-Id) |>
+        mutate(chr = case_when(
+                chr == "chr23" ~ "chrX",
+                chr == "chr24" ~ "chrY",
+                TRUE ~ chr))
+
+duplications <- case |> 
+        filter(Type == "duplication") |> 
         select(Id, RefcontigID1, RefStartPos, RefEndPos) |>
         rename(chr = RefcontigID1) |>
         mutate(chr = paste("chr", chr, sep = "")) |>
@@ -103,6 +116,20 @@ circos.trackPlotRegion(
                                       pch = 16,        # tipo de punto (16 = círculo sólido)
                                       cex = 0.8)       # tamaño del punto
                 }
+                
+                # Seleccionar deleciones del cromosoma actual
+                dp <- duplications[duplications$chr == chr, ]
+                
+                if (nrow(dp) > 0) {
+                        # Dibujar puntos en el centro de cada deleción
+                        mid_pos <- (dp$RefStartPos + dp$RefEndPos) / 2
+                        circos.points(mid_pos, rep(0.5, nrow(dp)), 
+                                      col = "#9999ff", 
+                                      pch = 16,        # tipo de punto (16 = círculo sólido)
+                                      cex = 0.8)       # tamaño del punto
+                }
+                
+                
         }
 )
 

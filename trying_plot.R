@@ -1,6 +1,14 @@
 library(circlize)
 library(purrr)
 
+# insertion -> #2e868b V
+# deletion -> #f3794b V
+# inversión -> #6fa9db
+# traslocation -> #eb008b
+# duplication -> #9999ff
+# CNV gain -> #9999ff V
+# CNV loss -> #f3794b V
+
 case74 <- cb_filter |> select(Id, data) |> filter(Id == 74) |> unnest()
 case61 <- cb_filter |> select(Id, data) |> filter(Id == 61) |> unnest()
 case83 <- cb_filter |> select(Id, data) |> filter(Id == 83) |> unnest()
@@ -79,7 +87,7 @@ circos.trackPlotRegion(
                         # Dibujar puntos en el centro de cada deleción
                         mid_pos <- (d$RefStartPos + d$RefEndPos) / 2
                         circos.points(mid_pos, rep(0.5, nrow(d)), 
-                                      col = "darkred", 
+                                      col = "#f3794b", 
                                       pch = 16,        # tipo de punto (16 = círculo sólido)
                                       cex = 0.8)       # tamaño del punto
                 }
@@ -91,7 +99,7 @@ circos.trackPlotRegion(
                         # Dibujar puntos en el centro de cada deleción
                         mid_pos <- (i$RefStartPos + i$RefEndPos) / 2
                         circos.points(mid_pos, rep(0.5, nrow(i)), 
-                                      col = "darkblue", 
+                                      col = "#2e868b", 
                                       pch = 16,        # tipo de punto (16 = círculo sólido)
                                       cex = 0.8)       # tamaño del punto
                 }
@@ -132,7 +140,7 @@ circos.trackPlotRegion(
                         }
                 }
                 
-                draw_cnvs(d_gains, "blue")
-                draw_cnvs(d_losses, "red")
+                draw_cnvs(d_gains, "#9999ff")
+                draw_cnvs(d_losses, "#f3794b")
         }
 )

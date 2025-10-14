@@ -18,7 +18,7 @@ case83 <- cb_filter |> select(Id, data) |> filter(Id == 83) |> unnest() #trans, 
 case66 <- cb_filter |> select(Id, data) |> filter(Id == 66) |> unnest() #trans, inv, dup, gain, loss
 case90 <- cb_filter |> select(Id, data) |> filter(Id == 90) |> unnest()
 
-case <- case90
+case <- case74
 
 cytobands <- read.cytoband(species = "hg38")
 
@@ -241,13 +241,10 @@ circos.trackPlotRegion(
         }
 )
 
-# Suponiendo que tu tabla tiene las columnas: chr1, chr2, RefStartPos, RefEndPos
+#TRANSLOCATIONS
 for(i in seq_len(nrow(translocations))) {
         chr_a <- translocations$chr1[i]
         chr_b <- translocations$chr2[i]
-        
-        # Puedes usar el rango de RefStartPos a RefEndPos en ambos cromosomas si quieres representar la región
-        # Si solo tienes una posición, usa RefStartPos como punto único
         circos.link(
                 sector.index1 = chr_a, point1 = translocations$RefStartPos[i],
                 sector.index2 = chr_b, point2 = translocations$RefEndPos[i],
@@ -255,3 +252,35 @@ for(i in seq_len(nrow(translocations))) {
         )
 }
 
+# Definir colores y etiquetas
+legend_colors <- c(
+        "#f3794b",   # deletion / CNV loss / aneuploidy loss
+        "#2e868b",   # insertion
+        "#6fa9db",   # inversion
+        "#eb008b",   # translocation
+        "#9999ff",   # duplication / CNV gain / aneuploidy gain
+        "#9999ff",   # gain (CNV)
+        "#f3794b"    # loss (CNV)
+)
+
+legend_labels <- c(
+        "Deletion / Loss / Aneuploidy Loss",
+        "Insertion",
+        "Inversion",
+        "Translocation",
+        "Duplication / CNV Gain / Aneuploidy Gain",
+        "Gain (CNV)",
+        "Loss (CNV)"
+)
+
+# Añadir la leyenda a la derecha del gráfico
+legend(
+        "right",                 # posición
+        legend = legend_labels,  # etiquetas
+        col = legend_colors,     # colores
+        pch = 16,                # símbolo sólido
+        pt.cex = 1.2,            # tamaño del símbolo
+        bty = "n",               # sin borde
+        xpd = NA,                # permite dibujar fuera de la ventana
+        cex = 0.8                # tamaño del texto
+)

@@ -8,16 +8,25 @@ library(purrr)
 # duplication -> #9999ff V
 # CNV gain -> #9999ff V
 # CNV loss -> #f3794b V
+# aneuploidy gain -> #9999ff (=duplication)
+# aneuploidy loss -> #f3794b (=deletion)
 
 case74 <- cb_filter |> select(Id, data) |> filter(Id == 74) |> unnest() #trans, del, gain
 case61 <- cb_filter |> select(Id, data) |> filter(Id == 61) |> unnest() #ins, del
 case83 <- cb_filter |> select(Id, data) |> filter(Id == 83) |> unnest() #trans, del, dup, gain, loss
 case66 <- cb_filter |> select(Id, data) |> filter(Id == 66) |> unnest() #trans, inv, dup, gain, loss
+case90 <- cb_filter |> select(Id, data) |> filter(Id == 90) |> unnest()
 
-
-case <- case66
+case <- case90
 
 cytobands <- read.cytoband(species = "hg38")
+
+aneuplos <- case |>
+        filter(Type == "an-gain" | Type == "an-loss") |>
+        select(Id, RefcontigID1, Type) |>
+        rename(chr = RefcontigID1) |>
+        mutate(chr = paste("chr", chr, sep = "")) |>
+        ungroup() |> select(-Id)
 
 deletions <- case |> 
         filter(Type == "deletion") |> 
@@ -86,6 +95,7 @@ circos.initializeWithIdeogram(
         sort.chr = paste0("chr", 1:22)
 )
 
+#SNVs
 circos.trackPlotRegion(
         ylim = c(0, 1),
         track.height = 0.05,
@@ -133,9 +143,7 @@ circos.trackPlotRegion(
         }
 )
 
-
-
-
+#CNVs
 circos.trackPlotRegion(
         ylim = c(min(losses$fractionalCopyNumber, gains$fractionalCopyNumber, 2) - 0.5,
                  max(losses$fractionalCopyNumber, gains$fractionalCopyNumber, 2) + 0.5),
@@ -169,5 +177,21 @@ circos.trackPlotRegion(
                 
                 draw_cnvs(d_gains, "#9999ff")
                 draw_cnvs(d_losses, "#f3794b")
+                
+                #ANEUPLOIDIES
+                d_aneu <- aneuplos %>% filter(chr == current_chr)
+                if (nrow(d_aneu) > 0) {
+                        y_min <- min(c(losses$fractionalCopyNumber, gains$fractionalCopyNumber, 2)) - 0.4
+                        for (i in seq_len(nrow(d_aneu))) {
+                                color <- ifelse(d_aneu$Type[i] == "an-gain", "#9999ff", "#f3794b")
+                                circos.lines(
+                                        x = xlim, 
+                                        y = rep(y_min, 2), 
+                                        col = color, 
+                                        lwd = 3
+                                )
+                        }
+                }
         }
 )
+

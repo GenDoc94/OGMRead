@@ -1,15 +1,16 @@
 library(circlize)
 library(purrr)
+library(stringr)
 
 # insertion -> #2e868b V
 # deletion -> #f3794b V
 # inversión -> #6fa9db
-# traslocation -> #eb008b
+# traslocation -> #eb008b V
 # duplication -> #9999ff V
 # CNV gain -> #9999ff V
 # CNV loss -> #f3794b V
-# aneuploidy gain -> #9999ff (=duplication)
-# aneuploidy loss -> #f3794b (=deletion)
+# aneuploidy gain -> #9999ff (=duplication) V
+# aneuploidy loss -> #f3794b (=deletion) V
 
 case74 <- cb_filter |> select(Id, data) |> filter(Id == 74) |> unnest() #trans, del, gain
 case61 <- cb_filter |> select(Id, data) |> filter(Id == 61) |> unnest() #ins, del
@@ -26,7 +27,11 @@ aneuplos <- case |>
         select(Id, RefcontigID1, Type) |>
         rename(chr = RefcontigID1) |>
         mutate(chr = paste("chr", chr, sep = "")) |>
-        ungroup() |> select(-Id)
+        ungroup() |> select(-Id) |>
+        mutate(chr = case_when(
+                chr == "chr23" ~ "chrX",
+                chr == "chr24" ~ "chrY",
+                TRUE ~ chr))
 
 deletions <- case |> 
         filter(Type == "deletion") |> 
@@ -51,7 +56,18 @@ insertions <- case |>
                 TRUE ~ chr))
 
 duplications <- case |> 
-        filter(Type == "duplication") |> 
+        filter(str_starts(Type, "duplication")) |> 
+        select(Id, RefcontigID1, RefStartPos, RefEndPos) |>
+        rename(chr = RefcontigID1) |>
+        mutate(chr = paste("chr", chr, sep = "")) |>
+        ungroup() |> select(-Id) |>
+        mutate(chr = case_when(
+                chr == "chr23" ~ "chrX",
+                chr == "chr24" ~ "chrY",
+                TRUE ~ chr))
+
+inversions <- case |> 
+        filter(str_starts(Type, "inversion")) |> 
         select(Id, RefcontigID1, RefStartPos, RefEndPos) |>
         rename(chr = RefcontigID1) |>
         mutate(chr = paste("chr", chr, sep = "")) |>
@@ -83,6 +99,24 @@ losses <- case |>
                 chr == "chr24" ~ "chrY",
                 TRUE ~ chr))
 
+translocations <- case |> 
+        filter(str_starts(Type, "translocation")) |> 
+        select(Id, RefcontigID1, RefcontigID2, RefStartPos, RefEndPos) |>
+        rename(chr1 = RefcontigID1, chr2 = RefcontigID2) |>
+        mutate(chr1 = paste("chr", chr1, sep = ""), chr2 = paste("chr", chr2, sep = "")) |>
+        ungroup() |> select(-Id) |>
+        mutate(chr1 = case_when(
+                chr1 == "chr23" ~ "chrX",
+                chr1 == "chr24" ~ "chrY",
+                TRUE ~ chr1)) |>
+        mutate(chr2 = case_when(
+                chr2 == "chr23" ~ "chrX",
+                chr2 == "chr24" ~ "chrY",
+                TRUE ~ chr2))
+
+
+
+
 
 circos.clear()
 
@@ -103,7 +137,7 @@ circos.trackPlotRegion(
         panel.fun = function(x, y) {
                 chr <- get.cell.meta.data("sector.index")
                 
-                # Seleccionar deleciones del cromosoma actual
+                #DELECTIONS
                 d <- deletions[deletions$chr == chr, ]
                 
                 if (nrow(d) > 0) {
@@ -115,7 +149,7 @@ circos.trackPlotRegion(
                                       cex = 0.8)       # tamaño del punto
                 }
                 
-                # Seleccionar deleciones del cromosoma actual
+                #INSERTIONS
                 i <- insertions[insertions$chr == chr, ]
                 
                 if (nrow(i) > 0) {
@@ -127,7 +161,7 @@ circos.trackPlotRegion(
                                       cex = 0.8)       # tamaño del punto
                 }
                 
-                # Seleccionar deleciones del cromosoma actual
+                #DUPLICATIONS
                 dp <- duplications[duplications$chr == chr, ]
                 
                 if (nrow(dp) > 0) {
@@ -135,6 +169,18 @@ circos.trackPlotRegion(
                         mid_pos <- (dp$RefStartPos + dp$RefEndPos) / 2
                         circos.points(mid_pos, rep(0.5, nrow(dp)), 
                                       col = "#9999ff", 
+                                      pch = 16,        # tipo de punto (16 = círculo sólido)
+                                      cex = 0.8)       # tamaño del punto
+                }
+                
+                #INVERSIONS
+                inv <- inversions[inversions$chr == chr, ]
+                
+                if (nrow(inv) > 0) {
+                        # Dibujar puntos en el centro de cada deleción
+                        mid_pos <- (inv$RefStartPos + inv$RefEndPos) / 2
+                        circos.points(mid_pos, rep(0.5, nrow(inv)), 
+                                      col = "#6fa9db", 
                                       pch = 16,        # tipo de punto (16 = círculo sólido)
                                       cex = 0.8)       # tamaño del punto
                 }
@@ -194,4 +240,18 @@ circos.trackPlotRegion(
                 }
         }
 )
+
+# Suponiendo que tu tabla tiene las columnas: chr1, chr2, RefStartPos, RefEndPos
+for(i in seq_len(nrow(translocations))) {
+        chr_a <- translocations$chr1[i]
+        chr_b <- translocations$chr2[i]
+        
+        # Puedes usar el rango de RefStartPos a RefEndPos en ambos cromosomas si quieres representar la región
+        # Si solo tienes una posición, usa RefStartPos como punto único
+        circos.link(
+                sector.index1 = chr_a, point1 = translocations$RefStartPos[i],
+                sector.index2 = chr_b, point2 = translocations$RefEndPos[i],
+                col = "#eb008b", lwd = 1.5
+        )
+}
 

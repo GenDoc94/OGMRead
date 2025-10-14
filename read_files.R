@@ -30,6 +30,47 @@ quality <- list.files("json_files", pattern = "^report_.*\\.json$", full.names =
 
 rm(extract_values, process_file)
 
+#ANEUPLOIDY
+#List all files that start with number
+archives <- list.files(
+        path = "aneuploidy_files",
+        pattern = "^[0-9]+_.*\\.txt$",  # Empiezan con número
+        full.names = TRUE
+)
+
+# Leer, procesar y combinar
+aneuploidies <- archives %>%
+        set_names() %>%
+        map_dfr(~ {
+                read_tsv(
+                        .x,
+                        na = c("null", "-", "NA"),
+                        skip = 2,                   # Saltar las 2 primeras líneas
+                        col_types = cols(.default = "c")  # Leer todo como texto para evitar conflictos
+                ) %>%
+                        rename_with(~ sub("^#", "", .x)) %>%  # Eliminar el '#' del nombre de columnas
+                        rename(
+                                RefcontigID1 = chr,
+                                Type = types,
+                                fractionalCopyNumber = fractCN,
+                                copyNumber = fractChrLen,
+                                Confidence = score
+                        ) %>%
+                        mutate(
+                                Id = as.integer(str_extract(basename(.x), "^[0-9]+")),
+                                .before = 1
+                        )
+        }) %>% mutate(
+                Id = as.integer(Id),
+                Type = paste0("an-", Type),
+                Type = as.factor(Type),
+                across(c(RefcontigID1, copyNumber, Confidence, fractionalCopyNumber), as.numeric)
+        )
+
+
+rm(archives)
+
+
 #VARIANTS
 #List all files that start with number
 archives <- list.files(
@@ -48,6 +89,9 @@ variants <- archives %>%
         }) %>% mutate(
                 across(c(Classification, Type, Zygosity), as.factor)
         )
+
+variants <- bind_rows(variants, aneuploidies) |> arrange(Id)
+
 
 #Nested variant base
 n_variant <- variants |> group_by(Id) |> nest()
@@ -93,7 +137,7 @@ rm(n_variant)
 
 #Filtering P/LP/VUS variants
 cb_filter <- complete_base %>%
-        mutate(
-                data = map(data, ~ filter(.x, Classification %in% c("Uncertain significance", 
-                                                                    "Likely pathogenic", 
-                                                                    "Pathogenic"))))
+        mutate(data = map(data,~filter(.x,Classification %in% c("Uncertain significance",
+                                                      "Likely pathogenic",
+                                                      "Pathogenic") |
+                                        Type %in% c("an-gain", "an-loss"))))

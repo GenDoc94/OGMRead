@@ -1,0 +1,80 @@
+---
+title: "WorkFlow"
+author: "GenDoc94"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## OGM Read Workflow
+
+Firstly, we have to pull all archives from our server (Dropbox) to our repository (OGMRead).
+
+We should copy:
+
+-   json_files
+
+-   variants_files
+
+-   aneuploidy_files
+
+-   clinical_files
+
+```{r copying_files}
+source("copy_files.R")
+```
+
+If there is no error here, all is OK (no replicate Ids) we can proceed to the next step.
+
+## Making the bases
+
+Now, we are going to run the code to create the complete base.
+
+```{r readfiles, echo=FALSE, message=FALSE, warning=FALSE}
+source("read_files.R")
+```
+
+After this we have some bases:
+
+-   complete_base -\> All the information about the patient and clinics
+
+-   cb_filter -\> All the important variants of patients without LB/B variants.
+
+And some subbases:
+
+-   demograph
+
+-   metadata
+
+-   quality
+
+-   variants
+
+## Basics of our data
+
+Here...
+
+## Quality of Samples
+
+Here...
+
+## Generating Graphs
+
+Finally, we can generate our circles plot:
+
+```{r}
+source("circleplot.R")
+source("pdfgraphs.R")
+
+# Generate PDF for MM
+make_pdf_graphs(filter_dx = "MM", filename = "MM_graphs.pdf")
+
+# Generate PDF for LMA
+make_pdf_graphs(filter_dx = "LMA", filename = "LMA_graphs.pdf")
+
+# Generate PDF for LLC
+make_pdf_graphs(filter_dx = "LLC", filename = "LLC_graphs.pdf")
+```

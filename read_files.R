@@ -83,7 +83,7 @@ archives <- list.files(
 variants <- archives %>%
         set_names() %>%  #keep the name of the archive
         map_dfr(~ {
-                read_tsv(.x, na = c("null", "-", "NA"), comment = "") %>%
+                read_tsv(.x, na = c("null", "-", "NA"), comment = "", show_col_types = FALSE) %>% #show_col_types avoid ERROR. WARNING!
                         rename_with(~ sub("^#", "", .x), .cols = 1) %>%
                         mutate(Id = as.integer(str_extract(basename(.x), "^[0-9]+")), .before = 1)
         }) %>% mutate(

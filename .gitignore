@@ -10,3 +10,4 @@ clinical_files/*
 aneuploidy_files/*
 
 *.pdf
+*.html

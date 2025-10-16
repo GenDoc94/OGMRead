@@ -1,181 +1,239 @@
-# =========================================================
-# Visualización genómica integrada con circlize (CNV, deleciones, inversiones, translocaciones)
-# =========================================================
-
-# -------------------------------
-# 0. Cargar librerías
-# -------------------------------
+#Code to generate the circleplot similar to Bionano
 library(circlize)
 library(purrr)
+library(stringr)
+library(tidyverse)
 
-# -------------------------------
-# 1. Descargar bandas cromosómicas
-# -------------------------------
-cytobands <- read.cytoband(species = "hg38")
+circleplot <- function(id_pac, dbase) {
+        #Selecting patient
+        case <- dbase |> select(Id, data) |> filter(Id == id_pac) |> unnest(cols = c(data))
 
-# -------------------------------
-# 2. Preparar deleciones
-# -------------------------------
-deletions <- data.frame(
-        chr = c("chr1", "chr1", "chr2"),
-        start = c(1e6, 5e7, 1e6),
-        end   = c(2e6, 6e7, 2e6)
-)
-
-# -------------------------------
-# 3. Preparar translocaciones
-# -------------------------------
-translocations <- data.frame(
-        chr1 = c("chr1", "chr3"),
-        start1 = c(1e7, 5e7),
-        end1   = c(2e7, 6e7),
-        chr2 = c("chr2", "chr5"),
-        start2 = c(3e7, 7e7),
-        end2   = c(4e7, 8e7)
-)
-
-# -------------------------------
-# 4. Preparar inversiones
-# -------------------------------
-inversions <- data.frame(
-        chr = c("chr1", "chr2"),
-        pos = c(1.5e7, 7e7)
-)
-
-# -------------------------------
-# 5. Preparar variaciones en el número de copias (CNV)
-# -------------------------------
-# Segmentos CN (ganancias/pérdidas)
-cnv_segments <- data.frame(
-        chr = c("chr1", "chr1", "chr2", "chr3"),
-        start = c(1e7, 5e7, 1e7, 3e7),
-        end   = c(2e7, 6e7, 2e7, 4e7),
-        CN    = c(1, 3, 2, 4)
-)
-
-# Valores continuos (log2 ratio)
-cnv_log2 <- data.frame(
-        chr = rep("chr1", 10),
-        start = seq(1e6, 10e6, by = 1e6),
-        end = seq(1e6, 10e6, by = 1e6) + 1e5,
-        log2ratio = c(-1, -0.5, 0, 0.3, 1, 0.8, 0.2, -0.2, -0.6, -1)
-)
-
-# -------------------------------
-# 6. Limpiar gráfico previo
-# -------------------------------
-circos.clear()
-
-# -------------------------------
-# 7. Configurar posición inicial
-# -------------------------------
-circos.par(start.degree = 90)  # Cromosoma 1 arriba
-
-# -------------------------------
-# 8. Inicializar ideograma
-# -------------------------------
-circos.initializeWithIdeogram(
-        cytoband = cytobands,
-        species = "hg38",
-        plotType = c("ideogram", "axis", "labels"),
-        sort.chr = paste0("chr", 1:22)
-)
-
-# -------------------------------
-# 9. Añadir track CN segmentado (ganancias/pérdidas)
-# -------------------------------
-circos.trackPlotRegion(
-        ylim = c(0, 5),
-        track.height = 0.08,
-        bg.border = "grey40",
-        bg.col = NA,
-        panel.fun = function(x, y) {
-                chr <- get.cell.meta.data("sector.index")
-                d <- cnv_segments[cnv_segments$chr == chr, ]
-                if (nrow(d) > 0) {
-                        for (i in seq_len(nrow(d))) {
-                                col <- if (d$CN[i] < 2) "#1E90FF66" else if (d$CN[i] > 2) "#FF000066" else "#B0B0B066"
-                                circos.rect(d$start[i], 0, d$end[i], d$CN[i], col = col, border = "grey40")
+        #Generating bases for the graph
+        aneuplos <- case |>
+                filter(Type == "an-gain" | Type == "an-loss") |>
+                select(Id, RefcontigID1, Type) |>
+                rename(chr = RefcontigID1) |>
+                mutate(chr = paste("chr", chr, sep = "")) |>
+                ungroup() |> select(-Id) |>
+                mutate(chr = case_when(
+                        chr == "chr23" ~ "chrX",
+                        chr == "chr24" ~ "chrY",
+                        TRUE ~ chr))
+        
+        deletions <- case |> 
+                filter(Type == "deletion") |> 
+                select(Id, RefcontigID1, RefStartPos, RefEndPos) |>
+                rename(chr = RefcontigID1) |>
+                mutate(chr = paste("chr", chr, sep = "")) |>
+                ungroup() |> select(-Id) |>
+                mutate(chr = case_when(
+                        chr == "chr23" ~ "chrX",
+                        chr == "chr24" ~ "chrY",
+                        TRUE ~ chr))
+        
+        insertions <- case |> 
+                filter(Type == "insertion") |> 
+                select(Id, RefcontigID1, RefStartPos, RefEndPos) |>
+                rename(chr = RefcontigID1) |>
+                mutate(chr = paste("chr", chr, sep = "")) |>
+                ungroup() |> select(-Id) |>
+                mutate(chr = case_when(
+                        chr == "chr23" ~ "chrX",
+                        chr == "chr24" ~ "chrY",
+                        TRUE ~ chr))
+        
+        duplications <- case |> 
+                filter(str_starts(Type, "duplication")) |> 
+                select(Id, RefcontigID1, RefStartPos, RefEndPos) |>
+                rename(chr = RefcontigID1) |>
+                mutate(chr = paste("chr", chr, sep = "")) |>
+                ungroup() |> select(-Id) |>
+                mutate(chr = case_when(
+                        chr == "chr23" ~ "chrX",
+                        chr == "chr24" ~ "chrY",
+                        TRUE ~ chr))
+        
+        inversions <- case |> 
+                filter(str_starts(Type, "inversion")) |> 
+                select(Id, RefcontigID1, RefStartPos, RefEndPos) |>
+                rename(chr = RefcontigID1) |>
+                mutate(chr = paste("chr", chr, sep = "")) |>
+                ungroup() |> select(-Id) |>
+                mutate(chr = case_when(
+                        chr == "chr23" ~ "chrX",
+                        chr == "chr24" ~ "chrY",
+                        TRUE ~ chr))
+        
+        gains <- case |> 
+                filter(Type == "gain") |> 
+                select(Id, RefcontigID1, RefStartPos, RefEndPos, fractionalCopyNumber) |>
+                rename(chr = RefcontigID1) |>
+                mutate(chr = paste("chr", chr, sep = "")) |>
+                ungroup() |> select(-Id) |>
+                mutate(chr = case_when(
+                        chr == "chr23" ~ "chrX",
+                        chr == "chr24" ~ "chrY",
+                        TRUE ~ chr))
+        
+        losses <- case |> 
+                filter(Type == "loss") |> 
+                select(Id, RefcontigID1, RefStartPos, RefEndPos, fractionalCopyNumber) |>
+                rename(chr = RefcontigID1) |>
+                mutate(chr = paste("chr", chr, sep = "")) |>
+                ungroup() |> select(-Id) |>
+                mutate(chr = case_when(
+                        chr == "chr23" ~ "chrX",
+                        chr == "chr24" ~ "chrY",
+                        TRUE ~ chr))
+        
+        translocations <- case |> 
+                filter(str_starts(Type, "translocation")) |> 
+                select(Id, RefcontigID1, RefcontigID2, RefStartPos, RefEndPos) |>
+                rename(chr1 = RefcontigID1, chr2 = RefcontigID2) |>
+                mutate(chr1 = paste("chr", chr1, sep = ""), chr2 = paste("chr", chr2, sep = "")) |>
+                ungroup() |> select(-Id) |>
+                mutate(chr1 = case_when(
+                        chr1 == "chr23" ~ "chrX",
+                        chr1 == "chr24" ~ "chrY",
+                        TRUE ~ chr1)) |>
+                mutate(chr2 = case_when(
+                        chr2 == "chr23" ~ "chrX",
+                        chr2 == "chr24" ~ "chrY",
+                        TRUE ~ chr2))
+        
+        #Starting the graph
+        circos.clear()
+        circos.par(start.degree = 90)
+        circos.initializeWithIdeogram(
+                cytoband = cytobands,
+                species = "hg38",
+                plotType = c("ideogram", "axis", "labels"),
+                sort.chr = paste0("chr", 1:22)
+        )
+        
+        
+        #SNVs
+        circos.trackPlotRegion(
+                ylim = c(0, 1),
+                track.height = 0.05,
+                bg.border = "grey40",
+                panel.fun = function(x, y) {
+                        chr <- get.cell.meta.data("sector.index")
+                        
+                        #DELECTIONS
+                        d <- deletions[deletions$chr == chr, ]
+                        
+                        if (nrow(d) > 0) {
+                                # Dibujar puntos en el centro de cada deleción
+                                mid_pos <- (d$RefStartPos + d$RefEndPos) / 2
+                                circos.points(mid_pos, rep(0.5, nrow(d)), 
+                                              col = "#f3794b", 
+                                              pch = 16,        # tipo de punto (16 = círculo sólido)
+                                              cex = 0.8)       # tamaño del punto
+                        }
+                        
+                        #INSERTIONS
+                        i <- insertions[insertions$chr == chr, ]
+                        
+                        if (nrow(i) > 0) {
+                                # Dibujar puntos en el centro de cada deleción
+                                mid_pos <- (i$RefStartPos + i$RefEndPos) / 2
+                                circos.points(mid_pos, rep(0.5, nrow(i)), 
+                                              col = "#2e868b", 
+                                              pch = 16,        # tipo de punto (16 = círculo sólido)
+                                              cex = 0.8)       # tamaño del punto
+                        }
+                        
+                        #DUPLICATIONS
+                        dp <- duplications[duplications$chr == chr, ]
+                        
+                        if (nrow(dp) > 0) {
+                                # Dibujar puntos en el centro de cada deleción
+                                mid_pos <- (dp$RefStartPos + dp$RefEndPos) / 2
+                                circos.points(mid_pos, rep(0.5, nrow(dp)), 
+                                              col = "#9999ff", 
+                                              pch = 16,        # tipo de punto (16 = círculo sólido)
+                                              cex = 0.8)       # tamaño del punto
+                        }
+                        
+                        #INVERSIONS
+                        inv <- inversions[inversions$chr == chr, ]
+                        
+                        if (nrow(inv) > 0) {
+                                # Dibujar puntos en el centro de cada deleción
+                                mid_pos <- (inv$RefStartPos + inv$RefEndPos) / 2
+                                circos.points(mid_pos, rep(0.5, nrow(inv)), 
+                                              col = "#6fa9db", 
+                                              pch = 16,        # tipo de punto (16 = círculo sólido)
+                                              cex = 0.8)       # tamaño del punto
+                        }
+                        
+                        
+                }
+        )
+        
+        #CNVs
+        circos.trackPlotRegion(
+                ylim = c(min(losses$fractionalCopyNumber, gains$fractionalCopyNumber, 2) - 0.5,
+                         max(losses$fractionalCopyNumber, gains$fractionalCopyNumber, 2) + 0.5),
+                track.height = 0.1,
+                bg.border = "grey40",
+                panel.fun = function(x, y) {
+                        current_chr <- get.cell.meta.data("sector.index")
+                        if (!grepl("^chr", current_chr)) {
+                                current_chr <- paste0("chr", current_chr)
+                        }
+                        
+                        xlim <- get.cell.meta.data("xlim")
+                        
+                        # Línea base punteada en 2
+                        circos.lines(x = xlim, y = rep(2, 2), col = "black", lty = 2, lwd = 1)
+                        
+                        # Filtrar ganancias y pérdidas del cromosoma actual
+                        d_gains <- gains %>% filter(chr == current_chr)
+                        d_losses <- losses %>% filter(chr == current_chr)
+                        
+                        # Función auxiliar para dibujar escalones
+                        draw_cnvs <- function(df, color) {
+                                if (nrow(df) > 0) {
+                                        for (i in seq_len(nrow(df))) {
+                                                xs <- c(df$RefStartPos[i], df$RefStartPos[i], df$RefEndPos[i], df$RefEndPos[i])
+                                                ys <- c(2, df$fractionalCopyNumber[i], df$fractionalCopyNumber[i], 2)
+                                                circos.lines(xs, ys, col = color, lwd = 2)
+                                        }
+                                }
+                        }
+                        
+                        draw_cnvs(d_gains, "#9999ff")
+                        draw_cnvs(d_losses, "#f3794b")
+                        
+                        #ANEUPLOIDIES
+                        d_aneu <- aneuplos %>% filter(chr == current_chr)
+                        if (nrow(d_aneu) > 0) {
+                                y_min <- min(c(losses$fractionalCopyNumber, gains$fractionalCopyNumber, 2)) - 0.4
+                                for (i in seq_len(nrow(d_aneu))) {
+                                        color <- ifelse(d_aneu$Type[i] == "an-gain", "#9999ff", "#f3794b")
+                                        circos.lines(
+                                                x = xlim, 
+                                                y = rep(y_min, 2), 
+                                                col = color, 
+                                                lwd = 3
+                                        )
+                                }
                         }
                 }
-        }
-)
-
-# -------------------------------
-# 10. Añadir track con log2 ratios
-# -------------------------------
-circos.genomicTrack(
-        cnv_log2,
-        ylim = c(-2, 2),
-        track.height = 0.06,
-        bg.border = "grey40",
-        panel.fun = function(region, value, ...) {
-                circos.genomicPoints(region, value, col = "darkorange", pch = 16, cex = 0.5)
-                circos.genomicLines(region, value, col = "#FF8C0077", lwd = 1)
-        }
-)
-
-# -------------------------------
-# 11. Añadir deleciones e inversiones
-# -------------------------------
-circos.trackPlotRegion(
-        ylim = c(0, 1),
-        track.height = 0.05,
-        bg.border = "grey40",
-        panel.fun = function(x, y) {
-                chr <- get.cell.meta.data("sector.index")
-                
-                # Deleciones
-                d <- deletions[deletions$chr == chr, ]
-                if (nrow(d) > 0) {
-                        circos.rect(d$start, 0, d$end, 1, col = "#FF0000AA", border = "grey40")
-                }
-                
-                # Inversiones
-                inv <- inversions[inversions$chr == chr, ]
-                if (nrow(inv) > 0) {
-                        circos.points(x = inv$pos, y = rep(0.5, nrow(inv)), col = "#00FF00BB", pch = 16, cex = 1)
-                }
-        }
-)
-
-# -------------------------------
-# 12. Añadir translocaciones
-# -------------------------------
-walk(1:nrow(translocations), function(i) {
-        circos.link(
-                sector.index1 = translocations$chr1[i],
-                point1 = c(translocations$start1[i], translocations$end1[i]),
-                sector.index2 = translocations$chr2[i],
-                point2 = c(translocations$start2[i], translocations$end2[i]),
-                col = "#4169E180",
-                border = "grey40"
         )
-})
-
-# -------------------------------
-# 13. Añadir leyenda
-# -------------------------------
-legend(
-        "topright",
-        legend = c(
-                "CNV ganancia (CN>2)",
-                "CNV pérdida (CN<2)",
-                "CNV log2 ratio",
-                "Deleciones",
-                "Inversiones",
-                "Translocaciones"
-        ),
-        fill = c("#FF000066", "#1E90FF66", "darkorange", "#FF0000AA", "#00FF00BB", "#4169E180"),
-        border = "grey40",
-        bty = "n"
-)
-
-
-#library(karyoploteR)
-#
-# Suponiendo genome hg38
-#kp <- plotKaryotype(genome = "hg38")
-#
-# Añadir deleciones
-#kpRect(kp, chr = delec$chr, x0 = delec$start, x1 = delec$end, y0 = 0, y1 = 0.1, col = "red")
+        
+        #TRANSLOCATIONS
+        for(i in seq_len(nrow(translocations))) {
+                chr_a <- translocations$chr1[i]
+                chr_b <- translocations$chr2[i]
+                circos.link(
+                        sector.index1 = chr_a, point1 = translocations$RefStartPos[i],
+                        sector.index2 = chr_b, point2 = translocations$RefEndPos[i],
+                        col = "#eb008b", lwd = 1.5
+                )
+        }
+        
+   
+}

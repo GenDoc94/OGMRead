@@ -8,3 +8,5 @@ bionapp_files/*
 json_files/*
 clinical_files/*
 aneuploidy_files/*
+
+*.pdf

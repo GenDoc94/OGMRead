@@ -2,6 +2,8 @@ library(circlize)
 library(purrr)
 library(stringr)
 
+layout(matrix(c(1,2), nrow = 1), widths = c(4, 1))  # 4:1 ancho relativo
+
 # insertion -> #2e868b V
 # deletion -> #f3794b V
 # inversión -> #6fa9db
@@ -118,10 +120,9 @@ translocations <- case |>
 
 
 
+par(mar = c(0,0,0,0))  # margenes reducidos
 circos.clear()
-
-circos.par(start.degree = 90)  # Chr1 at 12am.
-
+circos.par(start.degree = 90)
 circos.initializeWithIdeogram(
         cytoband = cytobands,
         species = "hg38",
@@ -264,23 +265,24 @@ legend_colors <- c(
 )
 
 legend_labels <- c(
-        "Deletion / Loss / Aneuploidy Loss",
+        "Deletion",
         "Insertion",
         "Inversion",
         "Translocation",
-        "Duplication / CNV Gain / Aneuploidy Gain",
-        "Gain (CNV)",
-        "Loss (CNV)"
+        "Duplication",
+        "CNV Gain",
+        "CNV Loss"
 )
 
-# Añadir la leyenda a la derecha del gráfico
+par(mar = c(0,0,0,0))
+plot.new()
 legend(
-        "right",                 # posición
-        legend = legend_labels,  # etiquetas
-        col = legend_colors,     # colores
-        pch = 16,                # símbolo sólido
-        pt.cex = 1.2,            # tamaño del símbolo
-        bty = "n",               # sin borde
-        xpd = NA,                # permite dibujar fuera de la ventana
-        cex = 0.8                # tamaño del texto
+        "center",
+        legend = legend_labels,
+        col = legend_colors,
+        pch = 16,
+        pt.cex = 0.5,
+        bty = "n",
+        cex = 0.6,
+        ncol = 1
 )

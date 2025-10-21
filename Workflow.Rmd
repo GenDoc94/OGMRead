@@ -7,6 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
 ```
 
 ## OGM Read Workflow
@@ -33,7 +34,7 @@ If there is no error here, all is OK (no replicate Ids) we can proceed to the ne
 
 Now, we are going to run the code to create the complete base.
 
-```{r readfiles, echo=FALSE, message=FALSE, warning=FALSE}
+```{r reading_files, echo=FALSE, message=FALSE, warning=FALSE}
 source("read_files.R")
 ```
 
@@ -61,13 +62,36 @@ Here...
 
 Here...
 
+```{r quality}
+#TOTAL
+quality |> 
+        select(quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate) |>
+        summary()
+
+#By Patology
+#Merge metadata+quality
+qualmet <- left_join(quality, metadata, by = c("samplename" = "Id"))
+#MM
+qualmet |> filter(Dx == "MM") |>
+        select(quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate) |>
+        summary()
+#LMA
+qualmet |> filter(Dx == "LMA") |>
+        select(quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate) |>
+        summary()
+#LLC
+qualmet |> filter(Dx == "LLC") |>
+        select(quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate) |>
+        summary()
+```
+
 ## Generating Graphs
 
 Finally, we can generate our circles plot:
 
-```{r}
-source("circleplot.R")
-source("pdfgraphs.R")
+```{r generating_circleplots}
+source("circleplot.R") #This source generate the function circleplot(id_pac, dbase)
+source("pdfgraphs.R") #This source generate the function make_pdf_graphs(filter_dx, filename)
 
 # Generate PDF for MM
 make_pdf_graphs(filter_dx = "MM", filename = "MM_graphs.pdf")

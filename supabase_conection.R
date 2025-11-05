@@ -2,7 +2,7 @@ library(httr2)
 library(jsonlite)
 library(tidyverse)
 
-supabase_url <- "https://gavggbrvhzddfnfbkjun.supabase.co"
+supabase_url <- Sys.getenv("SUPABASE_URL")
 api_key <- Sys.getenv("SUPABASE_KEY")
 
 #DDx

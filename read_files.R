@@ -98,33 +98,15 @@ n_variant <- variants |> group_by(Id) |> nest()
 
 
 #METADATA
-ddx <- read_tsv("bionapp_files/DDx.txt",
-                col_names = TRUE,
-                locale = locale(encoding = "Latin1")) %>%
-        mutate(label=Dx) %>% select(-Dx) #rename doesnt work
-
-dmuestra <- read_tsv("bionapp_files/DMuestra.txt",
-                     col_names = TRUE,
-                     locale = locale(encoding = "Latin1"))
-
-metadata <- read_tsv("bionapp_files/Muestras.txt",
-                         col_names = TRUE,
-                         locale = locale(encoding = "Latin1")) %>% 
-        mutate(Id=NumBN, .before=1) %>% select(-NumBN) %>% #rename doesnt work
-        left_join(ddx, by = c("Dx" = "Cod")) %>%
-        mutate(Dx = label) %>%
-        select(-label) %>% mutate(Dx = as.factor(Dx)) %>%
-        left_join(dmuestra, by = c("Muestra" = "Cod")) %>%
-        mutate(Muestra = TipoMuestra) %>%
-        select(-TipoMuestra) %>% mutate(Muestra = as.factor(Muestra))
-
+source("supabase_conection.R")
 rm(archives, ddx, dmuestra)
 
 #CLINICAL
 
 
 # Leer el archivo Excel
-demograph <- read_excel("clinical_files/Basics.xlsx")
+demograph <- read_excel("clinical_files/Basics.xlsx") %>% 
+        select(-Petic) #Except Petic just because is in metadata
 
 
 

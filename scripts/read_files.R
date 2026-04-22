@@ -1,7 +1,6 @@
 library(tidyverse)
 library(readxl)
 library(jsonlite)
-library(readxl)
 
 #QUALITY
 extract_values <- function(x) {
@@ -18,7 +17,7 @@ process_file <- function(f) {
         bind_cols(job_tbl, mqr_tbl) |> mutate(filename = basename(f))
 }
 
-quality <- list.files("json_files", pattern = "^report_.*\\.json$", full.names = TRUE) |>
+quality <- list.files("files/json_files", pattern = "^report_.*\\.json$", full.names = TRUE) |>
         map_df(process_file) |> mutate(
                 samplename = as.integer(samplename),
                 quantity = parse_number(quantity), #Gbp
@@ -33,7 +32,7 @@ rm(extract_values, process_file)
 #ANEUPLOIDY
 #List all files that start with number
 archives <- list.files(
-        path = "aneuploidy_files",
+        path = "files/aneuploidy_files",
         pattern = "^[0-9]+_.*\\.txt$",  # Empiezan con número
         full.names = TRUE
 )
@@ -74,7 +73,7 @@ rm(archives)
 #VARIANTS
 #List all files that start with number
 archives <- list.files(
-        path = "variants_files",
+        path = "files/variants_files",
         pattern = "^[0-9]+_.*\\.txt$",  #start with number
         full.names = TRUE
 )
@@ -99,14 +98,14 @@ rm(aneuploidies)
 
 
 #METADATA
-source("supabase_conection.R")
+source("scripts/supabase_conection.R")
 rm(archives, ddx, dmuestra)
 
 #CLINICAL
 
 
 # Leer el archivo Excel
-demograph <- read_excel("clinical_files/Basics.xlsx") %>% 
+demograph <- read_excel("files/clinical_files/Basics.xlsx") %>% 
         select(-Petic) #Except Petic just because is in metadata
 
 

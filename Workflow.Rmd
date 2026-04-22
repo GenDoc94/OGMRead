@@ -27,7 +27,7 @@ We should copy:
 -   clinical_files
 
 ```{r copying_files}
-source("copy_files.R")
+source("scripts/copy_files.R")
 ```
 
 If there is no error here, all is OK (no replicate Ids) we can proceed to the next step.
@@ -37,7 +37,7 @@ If there is no error here, all is OK (no replicate Ids) we can proceed to the ne
 Now, we are going to run the code to create the complete base.
 
 ```{r reading_files, echo=FALSE, message=FALSE, warning=FALSE}
-source("read_files.R")
+source("scripts/read_files.R")
 ```
 
 After this we have some bases:
@@ -115,8 +115,8 @@ rmarkdown::render("export_base_LMA.Rmd")
 Finally, we can generate our circles plot:
 
 ```{r generating_circleplots}
-source("circleplot.R") #This source generate the function circleplot(id_pac, dbase)
-source("pdfgraphs.R") #This source generate the function make_pdf_graphs(filter_dx, filename)
+source("scripts/circleplot.R") #This source generate the function circleplot(id_pac, dbase)
+source("scripts/pdfgraphs.R") #This source generate the function make_pdf_graphs(filter_dx, filename)
 
 # Generate PDF for MM
 make_pdf_graphs(filter_dx = "MM", filename = "MM_graphs.pdf")

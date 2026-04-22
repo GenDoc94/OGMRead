@@ -4,16 +4,16 @@ library(stringr)
 # Define source folders and corresponding destination folders
 folders <- list(
         list(source = "C:/Users/Juan/Dropbox/DATOS OGM/ARCHIVOS VARIANTES",
-             dest   = "C:/Users/Juan/Desktop/R/OGMRead/variants_files",
+             dest   = "C:/Users/Juan/Desktop/R/OGMRead/files/variants_files",
              check_duplicates = TRUE),   # Check numeric prefix
         list(source = "C:/Users/Juan/Dropbox/DATOS OGM/ARCHIVOS JSON",
-             dest   = "C:/Users/Juan/Desktop/R/OGMRead/json_files",
+             dest   = "C:/Users/Juan/Desktop/R/OGMRead/files/json_files",
              check_duplicates = FALSE),  # Skip duplicate check
         list(source = "C:/Users/Juan/Dropbox/DATOS OGM/ARCHIVOS ANEUPLOIDÍAS",
-             dest   = "C:/Users/Juan/Desktop/R/OGMRead/aneuploidy_files",
+             dest   = "C:/Users/Juan/Desktop/R/OGMRead/files/aneuploidy_files",
              check_duplicates = TRUE),    # Check numeric prefix
         list(source = "C:/Users/Juan/Dropbox/DATOS OGM/BASES CLÍNICAS",
-             dest   = "C:/Users/Juan/Desktop/R/OGMRead/clinical_files",
+             dest   = "C:/Users/Juan/Desktop/R/OGMRead/files/clinical_files",
              check_duplicates = FALSE)    # Skip duplicate 
 )
 

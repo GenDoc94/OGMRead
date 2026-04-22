@@ -11,7 +11,10 @@ folders <- list(
              check_duplicates = FALSE),  # Skip duplicate check
         list(source = "C:/Users/Juan/Dropbox/DATOS OGM/ARCHIVOS ANEUPLOIDÍAS",
              dest   = "C:/Users/Juan/Desktop/R/OGMRead/aneuploidy_files",
-             check_duplicates = TRUE)    # Check numeric prefix
+             check_duplicates = TRUE),    # Check numeric prefix
+        list(source = "C:/Users/Juan/Dropbox/DATOS OGM/BASES CLÍNICAS",
+             dest   = "C:/Users/Juan/Desktop/R/OGMRead/clinical_files",
+             check_duplicates = FALSE)    # Skip duplicate 
 )
 
 # Loop over each folder

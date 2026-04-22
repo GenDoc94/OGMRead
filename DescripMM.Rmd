@@ -1,0 +1,171 @@
+---
+title: "DescriptionMM"
+author: "jjdomg"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+```
+
+## Generating the base
+
+```{r}
+descrip_MM <- complete_base |> select(Id, Dx, Proces, quantity, coverage, map_rate) |> filter(Dx == "MM") |> select(-Dx)
+descrip_MM <- as.data.frame(descrip_MM)
+```
+
+## Creating variables
+
+```{r}
+#Creamos la variable celulas_sep
+descrip_MM <- descrip_MM %>%
+  mutate(
+    # 1. Extraemos el bloque que tiene números/comas/puntos pegados a la M
+    # Buscamos: dígitos, comas o puntos que estén justo antes de una 'M' o 'm'
+    celulas_sep = str_extract(Proces, "[0-9.,]+(?=\\s*[Mm])"),
+    
+    # 2. Normalizamos: cambiamos la coma por punto para que R lo entienda
+    celulas_sep = str_replace(celulas_sep, ",", "."),
+    
+    # 3. Convertimos a número
+    celulas_sep = as.numeric(celulas_sep)
+  )
+
+
+#Creamos la variable celulas_sep_grupo
+descrip_MM <- descrip_MM %>%
+  mutate(
+    celulas_sep_grupo = case_when(
+      celulas_sep >= 0   & celulas_sep <= 0.5 ~ "0 - 0.5",
+#      celulas_sep > 0.5  & celulas_sep <= 1   ~ "0.5 - 1",
+      celulas_sep > 0.5    & celulas_sep <= 1.5 ~ "0.5 - 1.5",
+      TRUE                                    ~ NA_character_  # Para los casos como "Lisis pellet" sin número
+    )
+  )
+
+descrip_MM$celulas_sep_grupo <- as.factor(descrip_MM$celulas_sep_grupo)
+# Para comprobar cuántos han caído en cada grupo:
+table(descrip_MM$celulas_sep_grupo, useNA = "always")
+
+#Variable de porcentaje de quantity
+descrip_MM <- descrip_MM %>%
+  mutate(
+    # 1. Calculamos el porcentaje
+    # 2. Usamos pmin para que si el valor supera 100, se quede en 100
+    quantity_percent = pmin((quantity / 1500) * 100, 100)
+  )
+```
+## Making the graph
+
+```{r}
+library(ggplot2)
+
+# Filtramos NAs y aseguramos el orden de los grupos
+df_plot <- descrip_MM[!is.na(descrip_MM$celulas_sep_grupo), ]
+
+ggplot(df_plot, aes(x = celulas_sep_grupo, y = quantity, fill = celulas_sep_grupo)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+  geom_jitter(width = 0.2, alpha = 0.5) + # Puntos reales
+  theme_minimal() +
+  labs(
+    title = "Distribución de Quantity por Grupos",
+    x = "Millones de células",
+    y = "Quantity"
+  ) +
+  theme(legend.position = "none")
+
+ggplot(df_plot, aes(x = quantity, fill = celulas_sep_grupo)) +
+  geom_histogram(
+    aes(y = after_stat(density)), 
+    bins = 30, 
+    alpha = 0.5, 
+    position = "identity",
+    color = "white"
+  ) +
+  geom_density(alpha = 0.2) + 
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +
+  labs(
+    title = "Histogramas Solapados de Quantity",
+    x = "Quantity",
+    y = "Densidad",
+    fill = "Grupo"
+  )
+
+ggplot(df_plot, aes(x = celulas_sep_grupo, y = quantity, fill = celulas_sep_grupo)) +
+  # El violín muestra la forma de la distribución
+  geom_violin(alpha = 0.5, trim = FALSE) + 
+  # El boxplot interno muestra mediana y cuartiles
+  geom_boxplot(width = 0.1, color = "black", outlier.shape = NA, alpha = 0.7) +
+  theme_minimal() +
+  labs(
+    title = "Violin Plot de Quantity",
+    subtitle = "Forma de la distribución + Mediana",
+    x = "Grupo de Células",
+    y = "Quantity"
+  ) +
+  theme(legend.position = "none")
+```
+
+## More graphs
+```{r}
+descrip_MM %>%
+  filter(!is.na(celulas_sep_grupo)) %>%
+  # 1. Preparamos los datos
+  mutate(es_maximo = ifelse(quantity_percent == 100, "100% Alcanzado", "Menos del 100%")) %>%
+  group_by(celulas_sep_grupo) %>%
+  mutate(label_x = paste0(celulas_sep_grupo, "\n(n = ", n(), ")")) %>%
+  group_by(label_x, es_maximo) %>%
+  summarise(conteo_interno = n(), .groups = "drop_last") %>% # Resumimos para evitar duplicados de texto
+  mutate(pct = conteo_interno / sum(conteo_interno)) %>% # (Opcional) por si quieres el % luego
+  
+  # 2. Dibujamos
+  ggplot(aes(x = label_x, y = conteo_interno, fill = es_maximo)) +
+  geom_bar(stat = "identity", position = "fill") + 
+  # 3. Corregimos geom_text añadiendo la estética 'y'
+  geom_text(
+    aes(y = conteo_interno, label = conteo_interno), 
+    position = position_fill(vjust = 0.5), 
+    color = "black", 
+    fontface = "bold"
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("100% Alcanzado" = "#2ca25f", "Menos del 100%" = "#e5f5f9")) +
+  theme_minimal() +
+  labs(
+    title = "Proporción de muestras que alcanzan el máximo",
+    subtitle = "Los números indican el recuento de muestras en cada estado",
+    x = "Grupo de Células (Millones)",
+    y = "Porcentaje",
+    fill = "Estado"
+  )
+
+
+# Calculamos los tamaños de muestra primero
+df_final <- descrip_MM %>%
+  filter(!is.na(celulas_sep_grupo)) %>%
+  group_by(celulas_sep_grupo) %>%
+  mutate(leyenda_n = paste0(celulas_sep_grupo, " (n = ", n(), ")")) %>%
+  ungroup()
+
+# Usamos 'leyenda_n' para el color
+ggplot(df_final, aes(x = quantity_percent, color = leyenda_n)) +
+  stat_ecdf(linewidth = 1.2) +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "grey50") +
+  theme_minimal() +
+  scale_x_continuous(labels = function(x) paste0(x, "%"), limits = c(0, 105)) +
+  scale_color_brewer(palette = "Set1") +
+  labs(
+    title = "Curva de Distribución Acumulada",
+    subtitle = "El desplazamiento a la derecha indica valores de quantity más altos",
+    x = "Porcentaje de Quantity",
+    y = "Proporción acumulada",
+    color = "Grupo (Tamaño de muestra)"
+  ) +
+  theme(legend.position = "bottom")
+```
+

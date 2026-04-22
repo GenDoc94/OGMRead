@@ -95,6 +95,7 @@ variants <- bind_rows(variants, aneuploidies) |> arrange(Id)
 
 #Nested variant base
 n_variant <- variants |> group_by(Id) |> nest()
+rm(aneuploidies)
 
 
 #METADATA
@@ -119,7 +120,16 @@ rm(n_variant)
 
 #Filtering P/LP/VUS variants
 cb_filter <- complete_base %>%
-        mutate(data = map(data,~filter(.x,Classification %in% c("Uncertain significance",
-                                                      "Likely pathogenic",
-                                                      "Pathogenic") |
-                                        Type %in% c("an-gain", "an-loss"))))
+        mutate(data = map(data, ~filter(.x, 
+                                        # 1. Relevant variants filter
+                                        (Classification %in% c("Uncertain significance", 
+                                                               "Likely pathogenic", 
+                                                               "Pathogenic") | 
+                                                 Type %in% c("an-gain", "an-loss")),
+                                        
+                                        # 2. Quality
+                                        (moleculeCount >= 10 | is.na(moleculeCount)),
+                                        
+                                        # 3. VAF
+                                        (VAF >= 0.05 | is.na(VAF))
+        )))

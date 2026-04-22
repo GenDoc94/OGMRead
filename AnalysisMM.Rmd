@@ -1,0 +1,240 @@
+---
+title: "AnalysisMM"
+author: "jjdomg"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readr)
+library(stringr)
+library(writexl)
+```
+
+## Preparing the base
+
+```{r}
+base_MM <- cb_filter |> 
+        filter(Dx=="MM") |>
+        select(Id, data, )
+
+#rm(aneuploidies, cb_filter, complete_base, demograph, metadata, quality, variants)
+
+filter_MM <-read_tsv("filter_MM.bed", 
+                     skip = 1, 
+                     col_names = c("chrom", "start", "end", "name"),
+                     col_types = "iiic")
+
+filter_MM <- filter_MM %>%
+  mutate(type = case_when(
+    str_detect(name, fixed("insertion", ignore_case = TRUE)) ~ 1,
+    str_detect(name, fixed("deletion", ignore_case = TRUE)) ~ 2,
+    str_detect(name, fixed("inversion", ignore_case = TRUE)) ~ 3,
+    str_detect(name, fixed("translocation", ignore_case = TRUE)) | 
+    str_detect(name, fixed("rearrangement", ignore_case = TRUE)) ~ 4,
+    str_detect(name, fixed("duplication", ignore_case = TRUE)) ~ 5,
+    str_detect(name, fixed("gain", ignore_case = TRUE)) ~ 6,
+    TRUE ~ 0  # Si no encuentra nada de lo anterior
+  ))
+
+```
+
+## Adjusting padding
+
+```{r}
+cnv_overlap <- 600000 #Just to include Id=107 rMAF 
+sv_overlap <- 0
+```
+
+
+
+## Creating the MATRIX
+
+```{r}
+library(tidyverse)
+
+check_variant <- function(sample_data, f_chrom, f_start, f_end, f_type, f_name) {
+  
+  # 1. Ajustar márgenes
+  f_start_adj <- f_start - cnv_overlap
+  f_end_adj <- f_end + cnv_overlap
+  
+  # Coordenadas de IGH (hg38 según tus datos)
+  igh_chrom <- 14
+  igh_start <- 105583731 - cnv_overlap
+  igh_end <- 106879812 + cnv_overlap
+  
+  # 2. Filtrado inicial especial para translocaciones (Tipo 4)
+  if (f_type == 4) {
+    hits <- sample_data %>%
+      filter(as.character(RefcontigID1) == as.character(f_chrom) | 
+             as.character(RefcontigID2) == as.character(f_chrom))
+  } else {
+    hits <- sample_data %>%
+      filter(as.character(RefcontigID1) == as.character(f_chrom))
+  }
+  
+  if (nrow(hits) == 0) return(0)
+  
+  # 3. Lógica de solapamiento y tipos
+  final_hits <- hits %>%
+    filter(
+      case_when(
+        f_type == 0 ~ (RefStartPos <= f_end_adj & RefEndPos >= f_start_adj),
+        
+        f_type == 2 ~ (SuperType %in% 2 | tolower(as.character(Type)) == "loss") & 
+                      (RefStartPos <= f_end_adj & RefEndPos >= f_start_adj),
+        
+        # Lógica especial para Translocaciones (Tipo 4)
+        f_type == 4 ~ (SuperType %in% 4) & (
+          # Caso A: El cromosoma del filtro es RefcontigID1
+          (as.character(RefcontigID1) == as.character(f_chrom) & 
+           RefStartPos >= f_start_adj & RefStartPos <= f_end_adj &
+           # Si es IGH_translocation, validar el partner en RefcontigID2
+           (!str_detect(f_name, "IGH_translocation") | 
+            (as.character(RefcontigID2) == as.character(igh_chrom) & 
+             RefEndPos >= igh_start & RefEndPos <= igh_end))) | 
+          
+          # Caso B: El cromosoma del filtro es RefcontigID2
+          (as.character(RefcontigID2) == as.character(f_chrom) & 
+           RefEndPos >= f_start_adj & RefEndPos <= f_end_adj &
+           # Si es IGH_translocation, validar el partner en RefcontigID1
+           (!str_detect(f_name, "IGH_translocation") | 
+            (as.character(RefcontigID1) == as.character(igh_chrom) & 
+             RefStartPos >= igh_start & RefStartPos <= igh_end)))
+        ),
+        
+        f_type == 6 ~ (tolower(as.character(Type)) == "gain") & 
+                      (RefStartPos <= f_end_adj & RefEndPos >= f_start_adj),
+        
+        TRUE ~ (SuperType %in% f_type) & (RefStartPos <= f_end_adj & RefEndPos >= f_start_adj)
+      )
+    )
+  
+  return(if(nrow(final_hits) > 0) 1 else 0)
+}
+
+
+# 2. Procesamiento principal sin warnings
+final_matrix <- base_MM %>%
+  mutate(presence = map(data, function(sample_df) {
+    
+    # Calculamos los resultados
+    results_vector <- pmap_dbl(filter_MM, function(chrom, start, end, name, type) {
+      check_variant(sample_df, chrom, start, end, type, name)
+    })
+    
+    # Creamos el tibble directamente con nombres para evitar el paso de matriz sin nombre
+    # Usamos .name_repair = "minimal" para que no se queje si hay nombres repetidos
+    as_tibble(as.list(setNames(results_vector, filter_MM$name)), .name_repair = "minimal")
+    
+  })) %>%
+  select(Id, presence) %>%
+  unnest(presence)
+
+final_matrix <- as.data.frame(final_matrix)
+
+
+write_xlsx(final_matrix, "final_matrix.xlsx")
+```
+
+## Adding aneuploidies
+
+```{r}
+# 1. Creamos el vector de nombres con 1:22, X e Y
+chrom_list <- c(as.character(1:22), "X", "Y")
+chrom_names <- map(chrom_list, ~c(paste0("Loss_", .x), paste0("Gain_", .x))) %>% unlist()
+
+# 2. Extraemos la información de aneuploidías de base_MM
+# 2. Extraemos la información de aneuploidías de base_MM con lógica de niveles
+aneuploidy_data <- base_MM %>%
+  mutate(aneu_cols = map(data, function(df) {
+    # Inicializamos vector de ceros (ahora contendrá los niveles 1, 2, 3...)
+    vec <- setNames(rep(0, length(chrom_names)), chrom_names)
+    
+    # Filtramos y calculamos el "valor" según fractionalCopyNumber
+    anes <- df %>% 
+      filter(Type %in% c("an-loss", "an-gain")) %>%
+      mutate(
+        chrom_label = case_when(
+          RefcontigID1 == 23 ~ "X",
+          RefcontigID1 == 24 ~ "Y",
+          TRUE ~ as.character(RefcontigID1)
+        ),
+        # Lógica de asignación de niveles según tu escala
+        valor_aneu = case_when(
+          Type == "an-loss" & fractionalCopyNumber >= 0.50 & fractionalCopyNumber <= 1.99 ~ 1,
+          Type == "an-loss" & fractionalCopyNumber >= 0.00 & fractionalCopyNumber <= 0.50 ~ 2,
+          
+          Type == "an-gain" & fractionalCopyNumber >= 3.00 & fractionalCopyNumber <= 3.99 ~ 1,
+          Type == "an-gain" & fractionalCopyNumber >= 4.00 & fractionalCopyNumber <= 4.99 ~ 2,
+          Type == "an-gain" & fractionalCopyNumber >= 5.00 & fractionalCopyNumber <= 5.99 ~ 3,
+          Type == "an-gain" & fractionalCopyNumber >= 6.00 & fractionalCopyNumber <= 6.99 ~ 4,
+          Type == "an-gain" & fractionalCopyNumber >= 7.00 & fractionalCopyNumber <= 7.99 ~ 5,
+          TRUE ~ 0
+        ),
+        col_name = case_when(
+          Type == "an-loss" ~ paste0("Loss_", chrom_label),
+          Type == "an-gain" ~ paste0("Gain_", chrom_label)
+        )
+      ) %>%
+      filter(valor_aneu > 0) # Solo nos quedamos con las que entran en la escala
+    
+    # Marcamos con el valor correspondiente en lugar de un 1 fijo
+    if(nrow(anes) > 0) {
+      # Usamos un bucle simple o asignación indexada para poblar el vector
+      for(i in 1:nrow(anes)) {
+        nombre_col <- anes$col_name[i]
+        if(nombre_col %in% chrom_names) {
+          vec[nombre_col] <- anes$valor_aneu[i]
+        }
+      }
+    }
+    
+    return(as_tibble(as.list(vec)))
+  })) %>%
+  select(Id, aneu_cols) %>%
+  unnest(aneu_cols)
+
+# 3. Unimos a tu matriz final
+final_matrix_extended <- final_matrix %>%
+  left_join(aneuploidy_data, by = "Id")
+
+## CONTANDO CROMOSOMAS
+
+#Identificar cuáles son las columnas de Ganancia y cuáles las de Pérdida
+cols_gain <- grep("^Gain_", names(final_matrix_extended), value = TRUE)
+cols_loss <- grep("^Loss_", names(final_matrix_extended), value = TRUE)
+
+#Calcular la columna TotalChr_Stimated
+# La lógica es: 46 (basal) + Suma de dosis de ganancias - Suma de dosis de pérdidas
+final_matrix_extended <- final_matrix_extended %>%
+  mutate(TotalChr_Stimated = 46 + 
+           rowSums(select(., all_of(cols_gain)), na.rm = TRUE) - 
+           rowSums(select(., all_of(cols_loss)), na.rm = TRUE))
+
+#Ploidía
+final_matrix_extended <- final_matrix_extended %>%
+  mutate(Ploidy = case_when(
+    TotalChr_Stimated >= 24 & TotalChr_Stimated <= 34 ~ 1,
+    TotalChr_Stimated >= 35 & TotalChr_Stimated <= 45 ~ 2,
+    TotalChr_Stimated == 46                          ~ 3,
+    TotalChr_Stimated >= 47                          ~ 4,
+    TRUE ~ NA_real_  # Para valores fuera de rango
+  )) %>%
+  # Convertimos a factor: los niveles son los números, las etiquetas son los nombres
+  mutate(Ploidy = factor(Ploidy, 
+                         levels = c(1, 2, 3, 4),
+                         labels = c("Hiperhaploide", 
+                                    "No hiperdiploide", 
+                                    "Diploide", 
+                                    "Hiperdiploide")))
+
+
+
+# 4. Exportar
+write_xlsx(final_matrix_extended, "final_matrix_completa.xlsx")
+```
+

@@ -11,3 +11,5 @@ aneuploidy_files/*
 
 *.pdf
 *.html
+*.xlsx
+*.rds

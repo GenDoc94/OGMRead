@@ -8,6 +8,8 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(writexl)
+library(gridExtra)
 ```
 
 ## OGM Read Workflow
@@ -42,7 +44,7 @@ After this we have some bases:
 
 -   complete_base -\> All the information about the patient and clinics
 
--   cb_filter -\> All the important variants of patients without LB/B variants.
+-   cb_filter -\> All the important variants of patients without LB/B variants and with some standard parameters: VAF > 0.05 and molecule count > 10.
 
 And some subbases:
 
@@ -83,7 +85,30 @@ qualmet |> filter(Dx == "LMA") |>
 qualmet |> filter(Dx == "LLC") |>
         select(quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate) |>
         summary()
+
+#Creating base 
+qualmet_clean <- qualmet |> select(samplename, quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate, Dx)
 ```
+
+## Generating list to export
+
+```{r generating_export_list}
+export_base <- complete_base |> select(Id, NHC, FechaNac, FechaPet, FechaDx, Petic, Dx)
+
+#MM
+export_base_MM <- export_base |> filter(Dx == "MM")
+write_xlsx(export_base_MM, path = "export_base_MM.xlsx")
+saveRDS(export_base_MM, "export_base_MM.rds")
+rmarkdown::render("export_base_MM.Rmd")
+
+#LMA
+export_base_LMA <- export_base |> filter(Dx == "LMA")
+write_xlsx(export_base_LMA, path = "export_base_LMA.xlsx")
+saveRDS(export_base_LMA, "export_base_LMA.rds")
+rmarkdown::render("export_base_LMA.Rmd")
+```
+
+
 
 ## Generating Graphs
 

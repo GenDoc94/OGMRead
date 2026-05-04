@@ -5,11 +5,21 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, cache=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(writexl)
 library(gridExtra)
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(readxl)
+  library(jsonlite)
+})
+start_time <- Sys.time()
+```
+
+```{r starting_time, echo=FALSE, message=TRUE}
+cat("El análisis comenzó a las:", as.character(start_time))
 ```
 
 ## OGM Read Workflow
@@ -26,7 +36,7 @@ We should copy:
 
 -   clinical_files
 
-```{r copying_files}
+```{r copying_files, echo=FALSE, message=TRUE}
 source("scripts/copy_files.R")
 ```
 
@@ -36,59 +46,121 @@ If there is no error here, all is OK (no replicate Ids) we can proceed to the ne
 
 Now, we are going to run the code to create the complete base.
 
-```{r reading_files, echo=FALSE, message=FALSE, warning=FALSE}
+```{r reading_files, echo=FALSE, message=TRUE, warning=FALSE}
 source("scripts/read_files.R")
 ```
 
 After this we have some bases:
 
--   complete_base -\> All the information about the patient and clinics
+-   `complete_base` -\> All the information about the patient and clinics
 
--   cb_filter -\> All the important variants of patients without LB/B variants and with some standard parameters: VAF > 0.05 and molecule count > 10.
+-   `cb_filter` -\> All the important variants of patients without LB/B variants and with some standard parameters: VAF \> 0.05 and molecule count \> 10.
 
 And some subbases:
 
--   demograph
+-   `demograph`
 
--   metadata
+-   `metadata`
 
--   quality
+-   `quality`
 
--   variants
+-   `variants`
+
+-   `aneuploidies`
 
 ## Basics of our data
 
-Here...
+```{r basics_data, echo=FALSE}
+cat("Total muestras procesadas: ", total_samples, "\n")
+cat("Total muestras analizadas: ", nrow(cb_filter), "\n")
+cat("Total muestras pendientes: ", pending_samples, "\n")
+cat("Total muestras fallidas: ", error_samples, "\n")
+cat("Porcentaje muestras fallidas: ", round(error_samples/total_samples, 2)*100, "%")
+```
+
+```{r plot_evolucion_detallada, echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+
+# 1. Preparar los datos con los 3 estados originales
+evolucion_detallada <- metadata %>%
+  mutate(
+    # Agrupamos por mes (o "week" para más detalle)
+    Mes = floor_date(as.Date(Fecha), "month"),
+    # Convertimos el número a texto descriptivo para la leyenda
+    Estado_Texto = case_when(
+      Estado_Muestra == 3 ~ "Finalizado",
+      Estado_Muestra == 2 ~ "Pendiente",
+      Estado_Muestra == 1 ~ "Perdida",
+      TRUE ~ "Desconocido"
+    )
+  ) %>%
+  group_by(Mes, Estado_Texto) %>%
+  summarise(Total = n(), .groups = "drop")
+
+# 2. Gráfica con tres líneas
+ggplot(evolucion_detallada, aes(x = Mes, y = Total, color = Estado_Texto, group = Estado_Texto)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  # Colores específicos: Verde (OK), Naranja (Espera), Rojo (Error)
+  scale_color_manual(values = c(
+    "Finalizado" = "#2E7D32", 
+    "Pendiente"  = "#F9A825", 
+    "Perdida"    = "#C62828"
+  )) +
+  labs(
+    title = "Evolución Temporal del Estado de las Muestras",
+    subtitle = "Seguimiento por mes: Finalizadas, Pendientes y Perdidas",
+    x = "Fecha",
+    y = "Número de Muestras",
+    color = "Estado"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank()
+  )
+```
 
 ## Quality of Samples
 
 Here...
 
-```{r quality}
-#TOTAL
-quality |> 
-        select(quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate) |>
-        summary()
-
-#By Patology
+```{r quality, echo=FALSE}
+#Creating base
 #Merge metadata+quality
 qualmet <- left_join(quality, metadata, by = c("samplename" = "Id"))
-#MM
-qualmet |> filter(Dx == "MM") |>
-        select(quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate) |>
-        summary()
-#LMA
-qualmet |> filter(Dx == "LMA") |>
-        select(quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate) |>
-        summary()
-#LLC
-qualmet |> filter(Dx == "LLC") |>
-        select(quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate) |>
-        summary()
-
-#Creating base 
-qualmet_clean <- qualmet |> select(samplename, quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate, Dx)
+qualmet_clean <- qualmet |> select(quantity, mol_n_50, coverage, map_rate, fp_rate, fn_rate, Dx)
 ```
+
+### Total Sample
+```{r total_quality, echo=FALSE}
+cat("n=", nrow(qualmet_clean),"\n")
+qualmet_clean |> select(-Dx) |> summary()
+```
+
+### MM
+```{r MM_quality, echo=FALSE}
+qualmet_clean_MM <- qualmet_clean |> filter(Dx == "MM") 
+cat("n =", nrow(qualmet_clean_MM), "\n")
+qualmet_clean_MM |> select(-Dx) |> summary()
+```
+
+### LMA
+```{r LMA_quality, echo=FALSE}
+qualmet_clean_LMA <- qualmet_clean |> filter(Dx == "LMA") 
+cat("n =", nrow(qualmet_clean_LMA), "\n")
+qualmet_clean_LMA |> select(-Dx) |> summary()
+```
+
+### LLC
+```{r LLC_quality, echo=FALSE}
+qualmet_clean_LLC <- qualmet_clean |> filter(Dx == "LLC") 
+cat("n =", nrow(qualmet_clean_LLC), "\n")
+qualmet_clean_LLC |> select(-Dx) |> summary()
+```
+
 
 ## Generating list to export
 
@@ -97,18 +169,19 @@ export_base <- complete_base |> select(Id, NHC, FechaNac, FechaPet, FechaDx, Pet
 
 #MM
 export_base_MM <- export_base |> filter(Dx == "MM")
-write_xlsx(export_base_MM, path = "export_base_MM.xlsx")
+write_xlsx(export_base_MM, path = "bases/export_base_MM.xlsx")
 saveRDS(export_base_MM, "export_base_MM.rds")
-rmarkdown::render("export_base_MM.Rmd")
+#envir = new.env() just to make sure start_time does not desapear
+rmarkdown::render("export_base_MM.Rmd", output_dir = "bases", envir = new.env())
+file.remove("export_base_MM.rds")
 
 #LMA
 export_base_LMA <- export_base |> filter(Dx == "LMA")
-write_xlsx(export_base_LMA, path = "export_base_LMA.xlsx")
+write_xlsx(export_base_LMA, path = "bases/export_base_LMA.xlsx")
 saveRDS(export_base_LMA, "export_base_LMA.rds")
-rmarkdown::render("export_base_LMA.Rmd")
+rmarkdown::render("export_base_LMA.Rmd", output_dir = "bases", envir = new.env())
+file.remove("export_base_LMA.rds")
 ```
-
-
 
 ## Generating Graphs
 
@@ -119,11 +192,32 @@ source("scripts/circleplot.R") #This source generate the function circleplot(id_
 source("scripts/pdfgraphs.R") #This source generate the function make_pdf_graphs(filter_dx, filename)
 
 # Generate PDF for MM
-make_pdf_graphs(filter_dx = "MM", filename = "MM_graphs.pdf")
+#make_pdf_graphs(filter_dx = "MM", filename = "graphs/MM_graphs.pdf")
 
 # Generate PDF for LMA
-make_pdf_graphs(filter_dx = "LMA", filename = "LMA_graphs.pdf")
+#make_pdf_graphs(filter_dx = "LMA", filename = "graphs/LMA_graphs.pdf")
 
 # Generate PDF for LLC
-make_pdf_graphs(filter_dx = "LLC", filename = "LLC_graphs.pdf")
+#make_pdf_graphs(filter_dx = "LLC", filename = "graphs/LLC_graphs.pdf")
+```
+
+## Saving data
+
+```{r saving_data, echo=FALSE, message=TRUE}
+objects_ogm <- list(
+  complete_base = complete_base,
+  cb_filter = cb_filter
+)
+
+saveRDS(objects_ogm, "workflow_data.rds")
+message("Saved: ", paste(names(objects_ogm), collapse = ", "))
+```
+
+
+
+```{r ending_time, cache = FALSE, echo=FALSE, message=TRUE}
+end_time <- Sys.time()
+cat("El análisis terminó a las:", as.character(end_time),"\n")
+total_time <- (end_time - start_time)
+cat("Ha tardado:", round(as.numeric(total_time),2), units(total_time))
 ```

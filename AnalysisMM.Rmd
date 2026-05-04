@@ -11,11 +11,22 @@ library(tidyverse)
 library(readr)
 library(stringr)
 library(writexl)
+library(knitr)
+```
+
+## Calling the read_base
+
+`
+```{r reading_files}
+workflow_data <- readRDS("workflow_data.rds")
+
+# Loading cb_filter
+cb_filter <- workflow_data$cb_filter
 ```
 
 ## Preparing the base
 
-```{r}
+```{r base_MM_analysis}
 base_MM <- cb_filter |> 
         filter(Dx=="MM") |>
         select(Id, data, )
@@ -43,7 +54,7 @@ filter_MM <- filter_MM %>%
 
 ## Adjusting padding
 
-```{r}
+```{r padding}
 cnv_overlap <- 600000 #Just to include Id=107 rMAF 
 sv_overlap <- 0
 ```
@@ -52,21 +63,19 @@ sv_overlap <- 0
 
 ## Creating the MATRIX
 
-```{r}
+```{r matrix_generation}
 library(tidyverse)
 
 check_variant <- function(sample_data, f_chrom, f_start, f_end, f_type, f_name) {
   
-  # 1. Ajustar márgenes
   f_start_adj <- f_start - cnv_overlap
   f_end_adj <- f_end + cnv_overlap
   
-  # Coordenadas de IGH (hg38 según tus datos)
   igh_chrom <- 14
   igh_start <- 105583731 - cnv_overlap
   igh_end <- 106879812 + cnv_overlap
   
-  # 2. Filtrado inicial especial para translocaciones (Tipo 4)
+  # Filtrado inicial
   if (f_type == 4) {
     hits <- sample_data %>%
       filter(as.character(RefcontigID1) == as.character(f_chrom) | 
@@ -78,43 +87,71 @@ check_variant <- function(sample_data, f_chrom, f_start, f_end, f_type, f_name) 
   
   if (nrow(hits) == 0) return(0)
   
-  # 3. Lógica de solapamiento y tipos
+  # Aplicamos la lógica de solapamiento
   final_hits <- hits %>%
     filter(
       case_when(
         f_type == 0 ~ (RefStartPos <= f_end_adj & RefEndPos >= f_start_adj),
-        
         f_type == 2 ~ (SuperType %in% 2 | tolower(as.character(Type)) == "loss") & 
                       (RefStartPos <= f_end_adj & RefEndPos >= f_start_adj),
-        
-        # Lógica especial para Translocaciones (Tipo 4)
         f_type == 4 ~ (SuperType %in% 4) & (
-          # Caso A: El cromosoma del filtro es RefcontigID1
           (as.character(RefcontigID1) == as.character(f_chrom) & 
            RefStartPos >= f_start_adj & RefStartPos <= f_end_adj &
-           # Si es IGH_translocation, validar el partner en RefcontigID2
            (!str_detect(f_name, "IGH_translocation") | 
             (as.character(RefcontigID2) == as.character(igh_chrom) & 
              RefEndPos >= igh_start & RefEndPos <= igh_end))) | 
-          
-          # Caso B: El cromosoma del filtro es RefcontigID2
           (as.character(RefcontigID2) == as.character(f_chrom) & 
            RefEndPos >= f_start_adj & RefEndPos <= f_end_adj &
-           # Si es IGH_translocation, validar el partner en RefcontigID1
            (!str_detect(f_name, "IGH_translocation") | 
             (as.character(RefcontigID1) == as.character(igh_chrom) & 
              RefStartPos >= igh_start & RefStartPos <= igh_end)))
         ),
-        
         f_type == 6 ~ (tolower(as.character(Type)) == "gain") & 
                       (RefStartPos <= f_end_adj & RefEndPos >= f_start_adj),
-        
         TRUE ~ (SuperType %in% f_type) & (RefStartPos <= f_end_adj & RefEndPos >= f_start_adj)
       )
     )
   
-  return(if(nrow(final_hits) > 0) 1 else 0)
+  if(nrow(final_hits) == 0) return(0)
+  
+  # NUEVA LÓGICA: Si el tipo es 0, devolvemos el código de la alteración encontrada
+  if(f_type == 0) {
+    # Tomamos la primera alteración encontrada en esa región
+    tipo_alt <- tolower(as.character(final_hits$Type[1]))
+    
+    res <- case_when(
+      tipo_alt == "deletion" ~ 2,
+      tipo_alt %in% c("duplication", "duplication_split") ~ 3,
+      tipo_alt %in% c("translocation_interchr", "translocation_intrachr") ~ 4,
+      tipo_alt == "insertion" ~ 5,
+      tipo_alt == "gain" ~ 6,
+      tipo_alt == "loss" ~ 7,
+      TRUE ~ 1 # Valor por defecto si hay solapamiento pero no coincide el nombre exacto
+    )
+    return(res)
+  }
+  
+  # Si no es tipo 0, devolvemos 1 (binario) como antes
+  return(1)
 }
+
+complete_matrix <- base_MM %>%
+  mutate(presence = map(data, function(sample_df) {
+    
+    results_vector <- pmap_dbl(filter_MM, function(chrom, start, end, name, type) {
+      check_variant(sample_df, chrom, start, end, type, name)
+    })
+    
+    as_tibble(as.list(setNames(results_vector, filter_MM$name)), .name_repair = "minimal")
+    
+  })) %>%
+  select(Id, presence) %>%
+  unnest(presence)
+
+complete_matrix <- as.data.frame(complete_matrix)
+
+# A partir de aquí puedes seguir con el código de "Adding aneuploidies" 
+# usando complete_matrix en lugar de final_matrix.
 
 
 # 2. Procesamiento principal sin warnings
@@ -137,17 +174,16 @@ final_matrix <- base_MM %>%
 final_matrix <- as.data.frame(final_matrix)
 
 
-write_xlsx(final_matrix, "final_matrix.xlsx")
+write_xlsx(final_matrix, "bases/final_matrix.xlsx")
 ```
 
 ## Adding aneuploidies
 
-```{r}
+```{r aneuploidy_generation}
 # 1. Creamos el vector de nombres con 1:22, X e Y
 chrom_list <- c(as.character(1:22), "X", "Y")
 chrom_names <- map(chrom_list, ~c(paste0("Loss_", .x), paste0("Gain_", .x))) %>% unlist()
 
-# 2. Extraemos la información de aneuploidías de base_MM
 # 2. Extraemos la información de aneuploidías de base_MM con lógica de niveles
 aneuploidy_data <- base_MM %>%
   mutate(aneu_cols = map(data, function(df) {
@@ -235,6 +271,155 @@ final_matrix_extended <- final_matrix_extended %>%
 
 
 # 4. Exportar
-write_xlsx(final_matrix_extended, "final_matrix_completa.xlsx")
+write_xlsx(final_matrix_extended, "bases/final_matrix_completa.xlsx")
+```
+
+## OncoPrint
+
+```{r oncoprint}
+# Instalación (si no los tienes)
+# if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+# BiocManager::install("ComplexHeatmap")
+# install.packages("readxl")
+
+library(ComplexHeatmap)
+library(readxl)
+
+# 1. Cargar los datos
+datos <- final_matrix_extended
+
+# 2. Convertir a matriz y trasponer
+# Excluimos 'Id' (col 1) y las últimas columnas clínicas (Ploidy, etc.) si no son alteraciones
+# Basado en tu archivo, las alteraciones van de la columna 2 a la 76
+matriz_ogm <- as.matrix(datos[, 2:76])
+rownames(matriz_ogm) <- datos$Id
+matriz_ogm <- t(matriz_ogm) # Transponemos: Filas = Alteraciones, Columnas = Pacientes
+
+# 3. Reemplazar 1 por el nombre de la alteración (ej. "MUT") y 0 por vacío
+# Esto es necesario porque oncoPrint busca etiquetas de texto
+matriz_final <- apply(matriz_ogm, 2, function(x) ifelse(x == 1, "ALT", ""))
+
+# Definir el color de la alteración
+col = c("ALT" = "#E41A1C") # Rojo para las alteraciones
+
+# Definir la función de dibujo (un rectángulo que llena el hueco)
+alter_fun = list(
+    background = function(x, y, w, h) {
+        grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), 
+            gp = gpar(fill = "#CCCCCC", col = NA))
+    },
+    ALT = function(x, y, w, h) {
+        grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), 
+            gp = gpar(fill = col["ALT"], col = NA))
+    }
+)
+
+# Generar el gráfico
+oncoPrint(matriz_final,
+          alter_fun = alter_fun, 
+          col = col, 
+          column_title = "OncoPrint de Alteraciones OGM",
+          heatmap_legend_param = list(title = "Alteración", at = c("ALT"), 
+                                      labels = c("Detectada")),
+          remove_empty_columns = TRUE, # Quita pacientes sin ninguna alteración
+          remove_empty_rows = TRUE)    # Quita alteraciones no presentes en ningún paciente
+
+# Crear anotación inferior con la columna 'Ploidy'
+# 1. Extraer los niveles únicos de Ploidía para no olvidar ninguno
+niveles_ploidia <- unique(datos$Ploidy)
+
+# 2. Crear una paleta de colores (puedes cambiarlos a tu gusto)
+# Usamos una función para generar colores si hay muchos niveles
+colores_ploidia <- setNames(
+  c("blue", "orange", "green", "purple", "red")[1:length(niveles_ploidia)], 
+  niveles_ploidia
+)
+
+# 3. Crear la anotación corregida
+anno_inferior = HeatmapAnnotation(
+    Ploidia = datos$Ploidy,
+    Total_Chr = anno_barplot(datos$TotalChr_Stimated),
+    col = list(Ploidia = colores_ploidia), # Ahora incluye todos los niveles
+    show_annotation_name = TRUE
+)
+```
+
+```{r oncoprint2}
+# Transformar los números en etiquetas de texto para ComplexHeatmap
+complete_matrix <- base_MM %>%
+  mutate(presence = map(data, function(sample_df) {
+    results_vector <- pmap_dbl(filter_MM, function(chrom, start, end, name, type) {
+      check_variant(sample_df, chrom, start, end, type, name)
+    })
+    as_tibble(as.list(setNames(results_vector, filter_MM$name)), .name_repair = "minimal")
+  })) %>%
+  select(Id, presence) %>%
+  unnest(presence)
+
+complete_matrix <- as.data.frame(complete_matrix)
+
+# --- 5. PREPARACIÓN PARA ONCOPRINT ---
+# Transformamos la matriz numérica a una de caracteres (etiquetas)
+matriz_plot <- apply(as.matrix(complete_matrix[, 2:ncol(complete_matrix)]), 2, function(x) {
+  case_when(
+    x == 1 ~ "ALT",
+    x == 2 ~ "DEL",
+    x == 3 ~ "DUP",
+    x == 4 ~ "TRA",
+    x == 5 ~ "INS",
+    x == 6 ~ "GAIN",
+    x == 7 ~ "LOSS",
+    TRUE ~ ""
+  )
+})
+rownames(matriz_plot) <- complete_matrix$Id
+matriz_plot <- t(matriz_plot)
+
+# Definición de Colores
+col = c("ALT"  = "#E41A1C", # Rojo
+        "DEL"  = "#377EB8", # Azul
+        "DUP"  = "#4DAF4A", # Verde
+        "TRA"  = "#984EA3", # Morado
+        "INS"  = "#FF7F00", # Naranja
+        "GAIN" = "#A65628", # Marrón
+        "LOSS" = "#F781BF") # Rosa
+
+# Función de dibujo (rectángulos)
+alter_fun = list(
+  background = function(x, y, w, h) {
+    grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), 
+              gp = gpar(fill = "#CCCCCC", col = NA))
+  },
+  ALT  = function(x, y, w, h) { grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), gp = gpar(fill = col["ALT"], col = NA)) },
+  DEL  = function(x, y, w, h) { grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), gp = gpar(fill = col["DEL"], col = NA)) },
+  DUP  = function(x, y, w, h) { grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), gp = gpar(fill = col["DUP"], col = NA)) },
+  TRA  = function(x, y, w, h) { grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), gp = gpar(fill = col["TRA"], col = NA)) },
+  INS  = function(x, y, w, h) { grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), gp = gpar(fill = col["INS"], col = NA)) },
+  GAIN = function(x, y, w, h) { grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), gp = gpar(fill = col["GAIN"], col = NA)) },
+  LOSS = function(x, y, w, h) { grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), gp = gpar(fill = col["LOSS"], col = NA)) }
+)
+
+# --- 6. ANOTACIONES Y GRÁFICO FINAL ---
+# (Cálculo de Ploidy y anotaciones como ya lo tenías)
+niveles_ploidia <- levels(final_matrix_extended$Ploidy)
+colores_ploidia <- setNames(c("#B2DF8A", "#FDBF6F", "#A6CEE3", "#FB9A99"), niveles_ploidia)
+
+anno_inferior = HeatmapAnnotation(
+    Ploidia = final_matrix_extended$Ploidy,
+    Total_Chr = anno_barplot(final_matrix_extended$TotalChr_Stimated),
+    col = list(Ploidia = colores_ploidia)
+)
+
+# Dibujar OncoPrint
+oncoPrint(matriz_plot,
+          alter_fun = alter_fun, 
+          col = col,
+          bottom_annotation = anno_inferior,
+          alter_fun_is_vectorized = FALSE,
+          column_title = "OncoPrint OGM Detallado",
+          heatmap_legend_param = list(title = "Tipo de Alteración", 
+                                      at = names(col), 
+                                      labels = c("Alterado", "Deleción", "Duplicación", 
+                                               "Translocación", "Inserción", "Ganancia", "Pérdida")))
 ```
 

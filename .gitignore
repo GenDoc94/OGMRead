@@ -4,6 +4,8 @@
 .Ruserdata
 
 files/*
+bases/*
+graphs/*
 
 *.pdf
 *.html

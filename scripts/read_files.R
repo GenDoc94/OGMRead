@@ -14,7 +14,7 @@ process_file <- function(f) {
         job_tbl <- extract_values(job_data$job$value)
         mqr_tbl <- extract_values(job_data$mqr$value)
         
-        bind_cols(job_tbl, mqr_tbl) |> mutate(filename = basename(f))
+        bind_cols(job_tbl, mqr_tbl, .name_repair = "unique_quiet") |> mutate(filename = basename(f))
 }
 
 quality <- list.files("files/json_files", pattern = "^report_.*\\.json$", full.names = TRUE) |>
@@ -26,6 +26,8 @@ quality <- list.files("files/json_files", pattern = "^report_.*\\.json$", full.n
                 map_rate = parse_number(map_rate),
                 fp_rate = as.numeric(fp_rate),
                 fn_rate = as.numeric(fn_rate))
+
+message("quality created")
 
 rm(extract_values, process_file)
 
@@ -45,7 +47,8 @@ aneuploidies <- archives %>%
                         .x,
                         na = c("null", "-", "NA"),
                         skip = 2,                   # Saltar las 2 primeras líneas
-                        col_types = cols(.default = "c")  # Leer todo como texto para evitar conflictos
+                        col_types = cols(.default = "c"), # Leer todo como texto para evitar conflictos
+                        name_repair = "unique_quiet" 
                 ) %>%
                         rename_with(~ sub("^#", "", .x)) %>%  # Eliminar el '#' del nombre de columnas
                         rename(
@@ -68,7 +71,7 @@ aneuploidies <- archives %>%
 
 
 rm(archives)
-
+message("aneuploidies created")
 
 #VARIANTS
 #List all files that start with number
@@ -91,6 +94,7 @@ variants <- archives %>%
 
 variants <- bind_rows(variants, aneuploidies) |> arrange(Id)
 
+message("variants created")
 
 #Nested variant base
 n_variant <- variants |> group_by(Id) |> nest()
@@ -100,14 +104,14 @@ rm(aneuploidies)
 #METADATA
 source("scripts/supabase_conection.R")
 rm(archives, ddx, dmuestra)
+message("metadata created")
+
 
 #CLINICAL
-
-
 # Leer el archivo Excel
 demograph <- read_excel("files/clinical_files/Basics.xlsx") %>% 
         select(-Petic) #Except Petic just because is in metadata
-
+message("demograph created")
 
 
 #Mixing data with clinical, metadata and quality (just keeping data)
@@ -116,6 +120,7 @@ complete_base <- left_join(n_variant, demograph, by = c("Id" = "NumBN")) %>%
         left_join(quality, by = c("Id" = "samplename"))
 
 rm(n_variant)
+message("complete_base created")
 
 #Filtering P/LP/VUS variants
 cb_filter <- complete_base %>%
@@ -132,3 +137,4 @@ cb_filter <- complete_base %>%
                                         # 3. VAF
                                         (VAF >= 0.05 | is.na(VAF))
         )))
+message("cb_filter created")

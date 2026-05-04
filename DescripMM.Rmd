@@ -11,6 +11,17 @@ library(tidyverse)
 library(ggplot2)
 ```
 
+## Calling the read_base
+
+
+```{r reading_files}
+workflow_data <- readRDS("workflow_data.rds")
+
+# Loading cb_filter
+complete_base <- workflow_data$complete_base
+```
+
+
 ## Generating the base
 
 ```{r}

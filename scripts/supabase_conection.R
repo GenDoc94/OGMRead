@@ -29,5 +29,8 @@ metadata <- fromJSON(resp_body_string(res))  %>%
         left_join(dmuestra, by = c("Muestra" = "Cod")) %>%
         mutate(Muestra = TipoMuestra) %>%
         select(-TipoMuestra) %>% mutate(Muestra = as.factor(Muestra))
+total_samples <- nrow(metadata)
+error_samples <- metadata |> filter(Estado_Muestra == 1) |> nrow()
+pending_samples <- metadata |> filter(Estado_Muestra == 2) |> nrow()
 
 rm(api_key, ddx, dmuestra, res, supabase_url)
